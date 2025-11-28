@@ -26,7 +26,7 @@ export default function ViewAllCourses() {
   const fetchCourses = async () => {
     setLoading(true)
     try {
-      const response = await axios.get('http://localhost:8000/api/courses/')
+      const response = await axios.get('http://localhost:8000/api/courses')
       setCourses(response.data)
     } catch (error) {
       console.error('載入課程失敗:', error)
@@ -62,7 +62,7 @@ export default function ViewAllCourses() {
     }
 
     try {
-      await axios.delete(`http://localhost:8000/api/courses/${courseId}/`)
+      await axios.delete(`http://localhost:8000/api/courses/${courseId}/delete/`)
       alert('課程刪除成功！')
       fetchCourses()
     } catch (error) {

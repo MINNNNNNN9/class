@@ -10,7 +10,7 @@ export default function CreateCourse() {
     description: '',
     credits: '2',
     hours: '2',
-    academic_year: '113',
+    academic_year: '114',
     semester: '1',
     department: '資管系',
     grade_level: '1',
@@ -56,7 +56,7 @@ export default function CreateCourse() {
 
   const departmentOptions = [
     { value: '資管系', label: '資訊管理系' },
-    { value: '建管系', label: '建築管理系' }
+    { value: '健管系', label: '健康事業管理系' }
   ]
 
   const gradeOptions = [

@@ -212,4 +212,20 @@ class CreditSummary(models.Model):
         verbose_name_plural = "學分統計"
     
     def __str__(self):
-        return f"{self.student.username} - 總學分: {self.total_credits}"
+        return f"{self.student.username} 的學分統計"
+
+class FavoriteCourse(models.Model):
+    """學生收藏的課程"""
+    student = models.ForeignKey(User, on_delete=models.CASCADE, related_name='favorite_courses', verbose_name="學生")
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='favorited_by', verbose_name="課程")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="收藏時間")
+    
+    class Meta:
+        verbose_name = "收藏課程"
+        verbose_name_plural = "收藏課程"
+        unique_together = ['student', 'course']
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"{self.student.username} - {self.course.course_name}"
+        
