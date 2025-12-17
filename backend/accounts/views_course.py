@@ -17,27 +17,21 @@ def search_courses(request):
     """
     查詢課程（帶篩選功能）
     Query Parameters:
-    - academic_year: 學年度
     - department: 系所
     - semester: 學期 (1 或 2)
     - course_type: 課程類別 (required, elective, general_required, general_elective)
-    - weekdays: 星期幾 (逗號分隔，例如: 1,3,5)
-    - periods: 節數 (逗號分隔，例如: 1,2,3)
+    - weekday: 星期幾 (1-7)
     - grade_level: 年級 (1-4)
-    - search_type: 搜尋類型 (course_code, teacher_name, course_name)
-    - search_query: 搜尋關鍵字
+    - academic_year: 學年度
     """
     try:
         # 獲取篩選參數
-        academic_year = request.query_params.get('academic_year', '113')
         department = request.query_params.get('department')
         semester = request.query_params.get('semester')
         course_type = request.query_params.get('course_type')
-        weekdays = request.query_params.get('weekdays')  # 逗號分隔
-        periods = request.query_params.get('periods')    # 逗號分隔
+        weekday = request.query_params.get('weekday')
         grade_level = request.query_params.get('grade_level')
-        search_type = request.query_params.get('search_type')
-        search_query = request.query_params.get('search_query')
+        academic_year = request.query_params.get('academic_year', '113')  # 預設學年度
         
         # 建立查詢
         query = Q(academic_year=academic_year)
@@ -48,38 +42,10 @@ def search_courses(request):
             query &= Q(semester=semester)
         if course_type:
             query &= Q(course_type=course_type)
+        if weekday:
+            query &= Q(weekday=weekday)
         if grade_level:
             query &= Q(grade_level=grade_level)
-        
-        # 處理複選星期幾
-        if weekdays:
-            weekday_list = [w.strip() for w in weekdays.split(',') if w.strip()]
-            if weekday_list:
-                weekday_query = Q()
-                for weekday in weekday_list:
-                    weekday_query |= Q(weekday=weekday)
-                query &= weekday_query
-        
-        # 處理複選節數（需要檢查課程時間是否包含指定節數）
-        if periods:
-            period_list = [int(p.strip()) for p in periods.split(',') if p.strip()]
-            if period_list:
-                period_query = Q()
-                for period in period_list:
-                    # 檢查 start_period <= period <= end_period
-                    period_query |= Q(start_period__lte=period, end_period__gte=period)
-                query &= period_query
-        
-        # 處理搜尋
-        if search_type and search_query:
-            search_query = search_query.strip()
-            if search_type == 'course_code':
-                query &= Q(course_code__icontains=search_query)
-            elif search_type == 'teacher_name':
-                # 搜尋教師真實姓名
-                query &= Q(teacher__profile__real_name__icontains=search_query)
-            elif search_type == 'course_name':
-                query &= Q(course_name__icontains=search_query)
         
         # 查詢課程
         courses = Course.objects.filter(query).select_related('teacher').order_by('course_code')
@@ -447,6 +413,7 @@ def get_enrolled_courses(request):
                 'teacher_name': course.teacher.profile.real_name if course.teacher and hasattr(course.teacher, 'profile') else '未設定',
                 'classroom': course.classroom,
                 'weekday': course.get_weekday_display(),
+                'weekday_value': course.weekday,
                 'time_display': course.get_time_display(),
                 'start_period': course.start_period,
                 'end_period': course.end_period,

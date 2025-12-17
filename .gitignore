@@ -3,3 +3,4 @@ backend/venv
 backend/accounts/__pycache__/urls.cpython-313.pyc
 backend/accounts/__pycache__/urls.cpython-313.pyc
 frontend/src/images/maxresdefault.jpg
+.DS_Store
