@@ -9,3 +9,4 @@ backend/accounts/__pycache__/apps.cpython-313.pyc
 __pycache__/
 *.pyc
 
+backend/accounts/__pycache__/*.pyc

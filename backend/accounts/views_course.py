@@ -1,438 +1,509 @@
 """
 課程相關的 API views
-包含課程查詢、課程收藏、學生選課等功能
+包含課程搜尋、選課、退選、收藏等功能
 """
 from django.contrib.auth.models import User
 from django.views.decorators.csrf import csrf_exempt
 from django.db.models import Q
-from rest_framework.decorators import api_view, authentication_classes, permission_classes
-from rest_framework.authentication import SessionAuthentication
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from .models import Course, StudentCourse, FavoriteCourse
+from .models import CourseOffering, Enrollment, FavoriteCourse, Profile
+import openpyxl
+from io import BytesIO
 
 
-@api_view(['GET'])
+@api_view(['POST'])
 def search_courses(request):
-    """
-    查詢課程（帶篩選功能）
-    Query Parameters:
-    - department: 系所
-    - semester: 學期 (1 或 2)
-    - course_type: 課程類別 (required, elective, general_required, general_elective)
-    - weekday: 星期幾 (1-7)
-    - grade_level: 年級 (1-4)
-    - academic_year: 學年度
-    """
+    """搜尋課程"""
     try:
-        # 獲取篩選參數
-        department = request.query_params.get('department')
-        semester = request.query_params.get('semester')
-        course_type = request.query_params.get('course_type')
-        weekday = request.query_params.get('weekday')
-        grade_level = request.query_params.get('grade_level')
-        academic_year = request.query_params.get('academic_year', '113')  # 預設學年度
+        # 取得搜尋條件
+        keyword = request.data.get('keyword', '').strip()
+        department = request.data.get('department', '').strip()
+        course_type = request.data.get('course_type', '').strip()
+        semester = request.data.get('semester', '').strip()
+        weekday = request.data.get('weekday', '').strip()
+        grade_level = request.data.get('grade_level', '').strip()
+        academic_year = request.data.get('academic_year', '114')  # 預設 114 學年度
         
-        # 建立查詢
-        query = Q(academic_year=academic_year)
+        print(f"搜尋條件: keyword={keyword}, department={department}, course_type={course_type}, semester={semester}, weekday={weekday}, grade_level={grade_level}, academic_year={academic_year}")
+        
+        # 基本查詢：取得所有開課資料
+        offerings = CourseOffering.objects.select_related(
+            'course', 'department'
+        ).prefetch_related(
+            'offering_teachers__teacher__profile',
+            'class_times'
+        ).filter(
+            academic_year=academic_year
+        )
+        
+        # 應用篩選條件
+        if semester:
+            offerings = offerings.filter(semester=semester)
         
         if department:
-            query &= Q(department=department)
-        if semester:
-            query &= Q(semester=semester)
+            offerings = offerings.filter(department__name=department)
+        
         if course_type:
-            query &= Q(course_type=course_type)
-        if weekday:
-            query &= Q(weekday=weekday)
+            offerings = offerings.filter(course__course_type=course_type)
+        
         if grade_level:
-            query &= Q(grade_level=grade_level)
+            offerings = offerings.filter(grade_level=int(grade_level))
         
-        # 查詢課程
-        courses = Course.objects.filter(query).select_related('teacher').order_by('course_code')
+        if weekday:
+            offerings = offerings.filter(class_times__weekday=weekday).distinct()
         
-        # 如果使用者已登入，檢查收藏狀態
-        favorite_course_ids = []
-        enrolled_course_ids = []
-        if request.user.is_authenticated:
-            favorite_course_ids = list(
-                FavoriteCourse.objects.filter(student=request.user).values_list('course_id', flat=True)
-            )
-            enrolled_course_ids = list(
-                StudentCourse.objects.filter(
-                    student=request.user,
-                    academic_year=academic_year,
-                    semester=semester or '1',
-                    status='enrolled'
-                ).values_list('course_id', flat=True)
-            )
+        if keyword:
+            offerings = offerings.filter(
+                Q(course__course_name__icontains=keyword) |
+                Q(course__course_code__icontains=keyword) |
+                Q(offering_teachers__teacher__profile__real_name__icontains=keyword)
+            ).distinct()
         
-        # 組裝課程資料
+        # 組裝回傳資料
         courses_data = []
-        for course in courses:
-            course_data = {
-                'id': course.id,
-                'course_code': course.course_code,
-                'course_name': course.course_name,
-                'course_type': course.get_course_type_display(),
-                'course_type_value': course.course_type,
-                'description': course.description,
-                'credits': course.credits,
-                'hours': course.hours,
-                'academic_year': course.academic_year,
-                'semester': course.get_semester_display(),
-                'semester_value': course.semester,
-                'department': course.department,
-                'grade_level': course.grade_level,
-                'teacher_name': course.teacher.profile.real_name if course.teacher and hasattr(course.teacher, 'profile') else '未設定',
-                'classroom': course.classroom,
-                'weekday': course.get_weekday_display(),
-                'weekday_value': course.weekday,
-                'time_display': course.get_time_display(),
-                'start_period': course.start_period,
-                'end_period': course.end_period,
-                'max_students': course.max_students,
-                'current_students': course.current_students,
-                'status': course.get_status_display(),
-                'status_value': course.status,
-                'is_full': course.is_full(),
-                'is_favorited': course.id in favorite_course_ids,
-                'is_enrolled': course.id in enrolled_course_ids,
-            }
-            courses_data.append(course_data)
+        for offering in offerings:
+            # 取得所有上課時段
+            class_times = offering.class_times.all()
+            times_data = []
+            for ct in class_times:
+                times_data.append({
+                    'weekday': ct.weekday,
+                    'weekday_display': ct.get_weekday_display(),
+                    'start_period': ct.start_period,
+                    'end_period': ct.end_period,
+                    'classroom': ct.classroom
+                })
+            
+            # 取得所有教師
+            teachers = offering.offering_teachers.all()
+            teachers_data = []
+            for ot in teachers:
+                teacher_name = ot.teacher.profile.real_name if hasattr(ot.teacher, 'profile') else ot.teacher.username
+                teachers_data.append({
+                    'id': ot.teacher.id,
+                    'name': teacher_name,
+                    'role': ot.role,
+                    'role_display': ot.get_role_display()
+                })
+            
+            courses_data.append({
+                'id': offering.id,
+                'course_code': offering.course.course_code,
+                'course_name': offering.course.course_name,
+                'course_type': offering.course.course_type,
+                'course_type_display': offering.course.get_course_type_display(),
+                'credits': offering.course.credits,
+                'description': offering.course.description,
+                'academic_year': offering.academic_year,
+                'semester': offering.semester,
+                'semester_display': offering.get_semester_display(),
+                'department': offering.department.name,
+                'grade_level': offering.grade_level,
+                'teachers': teachers_data,
+                'class_times': times_data,
+                'max_students': offering.max_students,
+                'current_students': offering.current_students,
+                'status': offering.status,
+                'status_display': offering.get_status_display(),
+            })
         
-        print(f"查詢到 {len(courses_data)} 門課程")
-        return Response({
-            'courses': courses_data,
-            'count': len(courses_data)
-        })
-        
-    except Exception as e:
-        print(f"查詢課程錯誤: {str(e)}")
-        return Response({'error': str(e)}, status=500)
-
-
-@api_view(['GET'])
-def get_filter_options(request):
-    """獲取所有可用的篩選選項"""
-    try:
-        academic_year = request.query_params.get('academic_year', '113')
-        
-        courses = Course.objects.filter(academic_year=academic_year)
-        
-        # 獲取所有唯一的系所
-        departments = courses.values_list('department', flat=True).distinct().order_by('department')
-        
-        filter_options = {
-            'departments': list(departments),
-            'semesters': [
-                {'value': '1', 'label': '上學期'},
-                {'value': '2', 'label': '下學期'},
-            ],
-            'course_types': [
-                {'value': 'required', 'label': '必修'},
-                {'value': 'elective', 'label': '選修'},
-                {'value': 'general_required', 'label': '通識(必修)'},
-                {'value': 'general_elective', 'label': '通識(選修)'},
-            ],
-            'weekdays': [
-                {'value': '1', 'label': '星期一'},
-                {'value': '2', 'label': '星期二'},
-                {'value': '3', 'label': '星期三'},
-                {'value': '4', 'label': '星期四'},
-                {'value': '5', 'label': '星期五'},
-                {'value': '6', 'label': '星期六'},
-                {'value': '7', 'label': '星期日'},
-            ],
-            'grade_levels': [
-                {'value': 1, 'label': '一年級'},
-                {'value': 2, 'label': '二年級'},
-                {'value': 3, 'label': '三年級'},
-                {'value': 4, 'label': '四年級'},
-            ],
-        }
-        
-        return Response(filter_options)
+        print(f"找到 {len(courses_data)} 門課程")
+        return Response(courses_data)
         
     except Exception as e:
-        print(f"獲取篩選選項錯誤: {str(e)}")
+        print(f"搜尋課程錯誤: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return Response({'error': str(e)}, status=500)
 
 
 @csrf_exempt
 @api_view(['POST'])
-@authentication_classes([SessionAuthentication])
-@permission_classes([IsAuthenticated])
-def toggle_favorite(request, course_id):
-    """切換課程收藏狀態"""
+def enroll_course(request):
+    """選課"""
     try:
-        course = Course.objects.get(id=course_id)
+        if not request.user.is_authenticated:
+            return Response({'error': '請先登入'}, status=401)
         
-        # 檢查是否已收藏
-        favorite = FavoriteCourse.objects.filter(student=request.user, course=course).first()
+        offering_id = request.data.get('offering_id')
         
-        if favorite:
-            # 如果已收藏，則取消收藏
-            favorite.delete()
-            return Response({
-                'message': '已取消收藏',
-                'is_favorited': False
-            })
-        else:
-            # 如果未收藏，則添加收藏
-            FavoriteCourse.objects.create(student=request.user, course=course)
-            return Response({
-                'message': '已加入收藏',
-                'is_favorited': True
-            })
-            
-    except Course.DoesNotExist:
-        return Response({'error': '找不到該課程'}, status=404)
-    except Exception as e:
-        print(f"切換收藏錯誤: {str(e)}")
-        return Response({'error': str(e)}, status=500)
-
-
-@api_view(['GET'])
-@authentication_classes([SessionAuthentication])
-@permission_classes([IsAuthenticated])
-def get_favorite_courses(request):
-    """獲取使用者收藏的課程列表"""
-    try:
-        favorites = FavoriteCourse.objects.filter(student=request.user).select_related('course', 'course__teacher')
+        if not offering_id:
+            return Response({'error': '缺少開課 ID'}, status=400)
         
-        courses_data = []
-        for favorite in favorites:
-            course = favorite.course
-            
-            # 檢查是否已選課
-            is_enrolled = StudentCourse.objects.filter(
-                student=request.user,
-                course=course,
-                status='enrolled'
-            ).exists()
-            
-            course_data = {
-                'id': course.id,
-                'course_code': course.course_code,
-                'course_name': course.course_name,
-                'course_type': course.get_course_type_display(),
-                'course_type_value': course.course_type,
-                'description': course.description,
-                'credits': course.credits,
-                'hours': course.hours,
-                'academic_year': course.academic_year,
-                'semester': course.get_semester_display(),
-                'semester_value': course.semester,
-                'department': course.department,
-                'grade_level': course.grade_level,
-                'teacher_name': course.teacher.profile.real_name if course.teacher and hasattr(course.teacher, 'profile') else '未設定',
-                'classroom': course.classroom,
-                'weekday': course.get_weekday_display(),
-                'time_display': course.get_time_display(),
-                'start_period': course.start_period,
-                'end_period': course.end_period,
-                'max_students': course.max_students,
-                'current_students': course.current_students,
-                'status': course.get_status_display(),
-                'status_value': course.status,
-                'is_full': course.is_full(),
-                'is_favorited': True,
-                'is_enrolled': is_enrolled,
-                'favorited_at': favorite.created_at.isoformat(),
-            }
-            courses_data.append(course_data)
+        try:
+            offering = CourseOffering.objects.get(id=offering_id)
+        except CourseOffering.DoesNotExist:
+            return Response({'error': '找不到該課程'}, status=404)
         
-        return Response({
-            'courses': courses_data,
-            'count': len(courses_data)
-        })
+        # 檢查是否已選課
+        if Enrollment.objects.filter(student=request.user, offering=offering, status='enrolled').exists():
+            return Response({'error': '已經選過這門課'}, status=400)
         
-    except Exception as e:
-        print(f"獲取收藏課程錯誤: {str(e)}")
-        return Response({'error': str(e)}, status=500)
-
-
-@csrf_exempt
-@api_view(['POST'])
-@authentication_classes([SessionAuthentication])
-@permission_classes([IsAuthenticated])
-def enroll_course(request, course_id):
-    """學生選課"""
-    try:
-        course = Course.objects.get(id=course_id)
-        user = request.user
-        
-        # 檢查課程狀態
-        if course.status == 'closed':
-            return Response({'error': '該課程已停開'}, status=400)
-        
-        if course.status == 'full' or course.is_full():
-            return Response({'error': '該課程已額滿'}, status=400)
-        
-        # 檢查是否已經選過這門課
-        existing_enrollment = StudentCourse.objects.filter(
-            student=user,
-            course=course,
-            academic_year=course.academic_year,
-            semester=course.semester
-        ).first()
-        
-        if existing_enrollment:
-            if existing_enrollment.status == 'enrolled':
-                return Response({'error': '您已經選過這門課了'}, status=400)
-            elif existing_enrollment.status == 'passed':
-                return Response({'error': '您已經通過這門課了'}, status=400)
-        
-        # 檢查時間衝突
-        time_conflict = StudentCourse.objects.filter(
-            student=user,
-            academic_year=course.academic_year,
-            semester=course.semester,
-            status='enrolled',
-            course__weekday=course.weekday
-        ).select_related('course').filter(
-            Q(course__start_period__lte=course.end_period, course__end_period__gte=course.start_period)
-        )
-        
-        if time_conflict.exists():
-            conflict_course = time_conflict.first().course
-            return Response({
-                'error': f'時間衝突：與 {conflict_course.course_name} ({conflict_course.get_time_display()}) 衝堂'
-            }, status=400)
+        # 檢查是否額滿
+        if offering.is_full():
+            return Response({'error': '課程已額滿'}, status=400)
         
         # 建立選課記錄
-        StudentCourse.objects.create(
-            student=user,
-            course=course,
-            academic_year=course.academic_year,
-            semester=course.semester,
+        enrollment = Enrollment.objects.create(
+            student=request.user,
+            offering=offering,
             status='enrolled'
         )
         
-        # 更新課程人數
-        course.current_students += 1
-        if course.current_students >= course.max_students:
-            course.status = 'full'
-        course.save()
+        # 檢查時段衝突
+        has_conflict, conflict_msg = enrollment.check_time_conflict()
+        if has_conflict:
+            enrollment.delete()
+            return Response({'error': conflict_msg}, status=400)
         
-        print(f"選課成功: {user.username} - {course.course_name}")
-        return Response({
-            'message': '選課成功',
-            'course_name': course.course_name
-        })
+        # 更新目前人數
+        offering.current_students += 1
+        if offering.current_students >= offering.max_students:
+            offering.status = 'full'
+        offering.save()
         
-    except Course.DoesNotExist:
-        return Response({'error': '找不到該課程'}, status=404)
+        print(f"{request.user.username} 選課成功: {offering.course.course_name}")
+        return Response({'message': '選課成功'})
+        
     except Exception as e:
         print(f"選課錯誤: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return Response({'error': str(e)}, status=500)
 
 
 @csrf_exempt
 @api_view(['POST'])
-@authentication_classes([SessionAuthentication])
-@permission_classes([IsAuthenticated])
-def drop_course(request, course_id):
-    """學生退選課程"""
+def drop_course(request):
+    """退選"""
     try:
-        course = Course.objects.get(id=course_id)
-        user = request.user
+        if not request.user.is_authenticated:
+            return Response({'error': '請先登入'}, status=401)
         
-        # 查找選課記錄
-        enrollment = StudentCourse.objects.filter(
-            student=user,
-            course=course,
-            status='enrolled'
-        ).first()
+        offering_id = request.data.get('offering_id')
         
-        if not enrollment:
-            return Response({'error': '您尚未選修這門課'}, status=400)
+        if not offering_id:
+            return Response({'error': '缺少開課 ID'}, status=400)
         
-        # 更新選課記錄狀態
+        try:
+            enrollment = Enrollment.objects.get(
+                student=request.user,
+                offering_id=offering_id,
+                status='enrolled'
+            )
+        except Enrollment.DoesNotExist:
+            return Response({'error': '找不到選課記錄'}, status=404)
+        
+        offering = enrollment.offering
+        
+        # 更新狀態
         enrollment.status = 'dropped'
         enrollment.save()
         
-        # 更新課程人數
-        course.current_students -= 1
-        if course.status == 'full' and course.current_students < course.max_students:
-            course.status = 'open'
-        course.save()
+        # 更新目前人數
+        offering.current_students = max(0, offering.current_students - 1)
+        if offering.status == 'full':
+            offering.status = 'open'
+        offering.save()
         
-        print(f"退選成功: {user.username} - {course.course_name}")
-        return Response({
-            'message': '退選成功',
-            'course_name': course.course_name
-        })
+        print(f"{request.user.username} 退選成功: {offering.course.course_name}")
+        return Response({'message': '退選成功'})
         
-    except Course.DoesNotExist:
-        return Response({'error': '找不到該課程'}, status=404)
     except Exception as e:
         print(f"退選錯誤: {str(e)}")
         return Response({'error': str(e)}, status=500)
 
 
 @api_view(['GET'])
-@authentication_classes([SessionAuthentication])
-@permission_classes([IsAuthenticated])
 def get_enrolled_courses(request):
-    """獲取學生已選課程"""
+    """取得已選課程"""
     try:
-        academic_year = request.query_params.get('academic_year', '113')
-        semester = request.query_params.get('semester', '1')
+        if not request.user.is_authenticated:
+            return Response({'error': '請先登入'}, status=401)
         
-        enrollments = StudentCourse.objects.filter(
+        enrollments = Enrollment.objects.filter(
             student=request.user,
-            academic_year=academic_year,
-            semester=semester,
             status='enrolled'
-        ).select_related('course', 'course__teacher')
+        ).select_related(
+            'offering__course',
+            'offering__department'
+        ).prefetch_related(
+            'offering__offering_teachers__teacher__profile',
+            'offering__class_times'
+        )
         
         courses_data = []
         for enrollment in enrollments:
-            course = enrollment.course
+            offering = enrollment.offering
             
-            # 檢查是否收藏
-            is_favorited = FavoriteCourse.objects.filter(
+            # 取得上課時段
+            class_times = offering.class_times.all()
+            times_data = []
+            for ct in class_times:
+                times_data.append({
+                    'weekday': ct.weekday,
+                    'weekday_display': ct.get_weekday_display(),
+                    'start_period': ct.start_period,
+                    'end_period': ct.end_period,
+                    'classroom': ct.classroom
+                })
+            
+            # 取得教師
+            main_teacher = offering.offering_teachers.filter(role='main').first()
+            teacher_name = main_teacher.teacher.profile.real_name if main_teacher and hasattr(main_teacher.teacher, 'profile') else '未設定'
+            
+            courses_data.append({
+                'id': offering.id,
+                'course_code': offering.course.course_code,
+                'course_name': offering.course.course_name,
+                'course_type': offering.course.course_type,
+                'course_type_display': offering.course.get_course_type_display(),
+                'credits': offering.course.credits,
+                'teacher_name': teacher_name,
+                'class_times': times_data,
+                'enrolled_at': enrollment.enrolled_at.strftime('%Y-%m-%d %H:%M:%S'),
+            })
+        
+        return Response(courses_data)
+        
+    except Exception as e:
+        print(f"錯誤: {str(e)}")
+        return Response({'error': str(e)}, status=500)
+
+
+@csrf_exempt
+@api_view(['POST'])
+def toggle_favorite(request):
+    """收藏/取消收藏課程"""
+    try:
+        if not request.user.is_authenticated:
+            return Response({'error': '請先登入'}, status=401)
+        
+        offering_id = request.data.get('offering_id')
+        
+        if not offering_id:
+            return Response({'error': '缺少開課 ID'}, status=400)
+        
+        try:
+            offering = CourseOffering.objects.get(id=offering_id)
+        except CourseOffering.DoesNotExist:
+            return Response({'error': '找不到該課程'}, status=404)
+        
+        # 檢查是否已收藏
+        favorite = FavoriteCourse.objects.filter(
+            student=request.user,
+            offering=offering
+        ).first()
+        
+        if favorite:
+            # 已收藏，取消收藏
+            favorite.delete()
+            return Response({'message': '已取消收藏', 'is_favorited': False})
+        else:
+            # 未收藏，新增收藏
+            FavoriteCourse.objects.create(
                 student=request.user,
-                course=course
-            ).exists()
+                offering=offering
+            )
+            return Response({'message': '已加入收藏', 'is_favorited': True})
+        
+    except Exception as e:
+        print(f"收藏錯誤: {str(e)}")
+        return Response({'error': str(e)}, status=500)
+
+
+@api_view(['GET'])
+def get_favorite_courses(request):
+    """取得收藏的課程"""
+    try:
+        if not request.user.is_authenticated:
+            return Response({'error': '請先登入'}, status=401)
+        
+        favorites = FavoriteCourse.objects.filter(
+            student=request.user
+        ).select_related(
+            'offering__course',
+            'offering__department'
+        ).prefetch_related(
+            'offering__offering_teachers__teacher__profile',
+            'offering__class_times'
+        )
+        
+        courses_data = []
+        for favorite in favorites:
+            offering = favorite.offering
             
-            course_data = {
-                'id': course.id,
-                'course_code': course.course_code,
-                'course_name': course.course_name,
-                'course_type': course.get_course_type_display(),
-                'course_type_value': course.course_type,
-                'description': course.description,
-                'credits': course.credits,
-                'hours': course.hours,
-                'academic_year': course.academic_year,
-                'semester': course.get_semester_display(),
-                'department': course.department,
-                'grade_level': course.grade_level,
-                'teacher_name': course.teacher.profile.real_name if course.teacher and hasattr(course.teacher, 'profile') else '未設定',
-                'classroom': course.classroom,
-                'weekday': course.get_weekday_display(),
-                'weekday_value': course.weekday,
-                'time_display': course.get_time_display(),
-                'start_period': course.start_period,
-                'end_period': course.end_period,
-                'max_students': course.max_students,
-                'current_students': course.current_students,
-                'status': course.get_status_display(),
-                'is_full': course.is_full(),
-                'is_favorited': is_favorited,
-                'is_enrolled': True,
-                'enrolled_date': enrollment.enrolled_date.isoformat(),
-            }
-            courses_data.append(course_data)
+            # 取得上課時段
+            class_times = offering.class_times.all()
+            times_data = []
+            for ct in class_times:
+                times_data.append({
+                    'weekday': ct.weekday,
+                    'weekday_display': ct.get_weekday_display(),
+                    'start_period': ct.start_period,
+                    'end_period': ct.end_period,
+                    'classroom': ct.classroom
+                })
+            
+            # 取得教師
+            main_teacher = offering.offering_teachers.filter(role='main').first()
+            teacher_name = main_teacher.teacher.profile.real_name if main_teacher and hasattr(main_teacher.teacher, 'profile') else '未設定'
+            
+            courses_data.append({
+                'id': offering.id,
+                'course_code': offering.course.course_code,
+                'course_name': offering.course.course_name,
+                'course_type': offering.course.course_type,
+                'course_type_display': offering.course.get_course_type_display(),
+                'credits': offering.course.credits,
+                'teacher_name': teacher_name,
+                'class_times': times_data,
+                'favorited_at': favorite.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+            })
+        
+        return Response(courses_data)
+        
+    except Exception as e:
+        print(f"錯誤: {str(e)}")
+        return Response({'error': str(e)}, status=500)
+
+
+@csrf_exempt
+@api_view(['POST'])
+def import_courses_excel(request):
+    """從 Excel 匯入課程"""
+    try:
+        if 'file' not in request.FILES:
+            return Response({'error': '沒有上傳檔案'}, status=400)
+        
+        excel_file = request.FILES['file']
+        
+        # 讀取 Excel
+        wb = openpyxl.load_workbook(BytesIO(excel_file.read()))
+        ws = wb.active
+        
+        # 取得欄位數量以判斷格式
+        first_row = next(ws.iter_rows(min_row=1, max_row=1))
+        column_count = len([cell for cell in first_row if cell.value is not None])
+        
+        print(f"偵測到 {column_count} 欄")
+        
+        success_count = 0
+        error_count = 0
+        errors = []
+        
+        # 根據欄位數量選擇對應的處理方式
+        if column_count == 15:
+            # 15 欄格式
+            for idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+                try:
+                    if not row[0]:  # 跳過空行
+                        continue
+                    
+                    (學年度, 學期, 課程代碼, 班級, 課程名稱, 授課教師,
+                     必選修, 學分數, 星期, 節次, 上課教室,
+                     上課週次, 每週時數, 人數上限, 備註) = row[:15]
+                    
+                    # ... 處理邏輯
+                    success_count += 1
+                    
+                except Exception as e:
+                    error_count += 1
+                    errors.append(f"第 {idx} 列: {str(e)}")
+        
+        elif column_count == 16:
+            # 16 欄格式（含系所）
+            for idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+                try:
+                    if not row[0]:
+                        continue
+                    
+                    (學年度, 學期, 課程代碼, 班級, 課程名稱, 授課教師,
+                     必選修, 學分數, 星期, 節次, 上課教室,
+                     上課週次, 每週時數, 人數上限, 系所, 備註) = row[:16]
+                    
+                    # ... 處理邏輯
+                    success_count += 1
+                    
+                except Exception as e:
+                    error_count += 1
+                    errors.append(f"第 {idx} 列: {str(e)}")
+        
+        else:
+            return Response({'error': f'不支援的格式（{column_count} 欄）'}, status=400)
+        
+        result = {
+            'message': f'匯入完成: 成功 {success_count} 筆，失敗 {error_count} 筆',
+            'success_count': success_count,
+            'error_count': error_count,
+        }
+        
+        if errors:
+            result['errors'] = errors[:10]  # 只回傳前 10 個錯誤
+        
+        return Response(result)
+        
+    except Exception as e:
+        print(f"匯入錯誤: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return Response({'error': str(e)}, status=500)
+
+@api_view(['GET'])
+def get_filter_options(request):
+    """取得篩選選項（系所、學期等）"""
+    try:
+        from .models import Department
+        
+        # 取得所有系所
+        departments = Department.objects.all().values_list('name', flat=True).distinct()
+        
+        # 取得所有學年度
+        academic_years = CourseOffering.objects.values_list('academic_year', flat=True).distinct().order_by('-academic_year')
+        
+        # 學期選項
+        semesters = [
+            {'value': '1', 'label': '上學期'},
+            {'value': '2', 'label': '下學期'},
+        ]
+        
+        # 課程類別選項
+        course_types = [
+            {'value': 'required', 'label': '必修'},
+            {'value': 'elective', 'label': '選修'},
+            {'value': 'general_required', 'label': '通識(必修)'},
+            {'value': 'general_elective', 'label': '通識(選修)'},
+        ]
+        
+        # 星期選項
+        weekdays = [
+            {'value': '1', 'label': '星期一'},
+            {'value': '2', 'label': '星期二'},
+            {'value': '3', 'label': '星期三'},
+            {'value': '4', 'label': '星期四'},
+            {'value': '5', 'label': '星期五'},
+            {'value': '6', 'label': '星期六'},
+            {'value': '7', 'label': '星期日'},
+        ]
+        
+        # 年級選項
+        grades = [
+            {'value': '1', 'label': '一年級'},
+            {'value': '2', 'label': '二年級'},
+            {'value': '3', 'label': '三年級'},
+            {'value': '4', 'label': '四年級'},
+        ]
         
         return Response({
-            'courses': courses_data,
-            'count': len(courses_data),
-            'total_credits': sum([c['credits'] for c in courses_data])
+            'departments': list(departments),
+            'academic_years': list(academic_years),
+            'semesters': semesters,
+            'course_types': course_types,
+            'weekdays': weekdays,
+            'grades': grades,
         })
         
     except Exception as e:
-        print(f"獲取已選課程錯誤: {str(e)}")
+        print(f"取得篩選選項錯誤: {str(e)}")
         return Response({'error': str(e)}, status=500)

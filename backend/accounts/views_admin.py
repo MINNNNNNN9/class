@@ -6,7 +6,7 @@ from django.contrib.auth.models import User
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from .models import Profile, Role, Course
+from .models import Profile, Role, Course, CourseOffering, OfferingTeacher, ClassTime, Department
 
 
 @api_view(['GET'])
@@ -42,7 +42,7 @@ def get_teachers(request):
 @csrf_exempt
 @api_view(['POST'])
 def create_course(request):
-    """建立新課程"""
+    """建立新課程（包含開課資料）"""
     try:
         # 獲取表單資料
         course_code = request.data.get('course_code')
@@ -50,10 +50,9 @@ def create_course(request):
         course_type = request.data.get('course_type')
         description = request.data.get('description', '')
         credits = request.data.get('credits')
-        hours = request.data.get('hours')
         academic_year = request.data.get('academic_year')
         semester = request.data.get('semester')
-        department = request.data.get('department')
+        department_name = request.data.get('department')
         grade_level = request.data.get('grade_level')
         teacher_id = request.data.get('teacher_id')
         classroom = request.data.get('classroom')
@@ -63,14 +62,10 @@ def create_course(request):
         max_students = request.data.get('max_students', 50)
         
         # 驗證必填欄位
-        if not all([course_code, course_name, course_type, credits, hours, 
-                   academic_year, semester, department, grade_level, teacher_id,
+        if not all([course_code, course_name, course_type, credits,
+                   academic_year, semester, department_name, grade_level, teacher_id,
                    classroom, weekday, start_period, end_period]):
             return Response({'error': '缺少必要欄位'}, status=400)
-        
-        # 檢查課程代碼是否已存在
-        if Course.objects.filter(course_code=course_code).exists():
-            return Response({'error': '課程代碼已存在'}, status=400)
         
         # 檢查教師是否存在
         try:
@@ -78,94 +73,137 @@ def create_course(request):
         except User.DoesNotExist:
             return Response({'error': '找不到該教師'}, status=404)
         
-        # 建立課程
-        course = Course.objects.create(
+        # 取得或建立系所
+        department, _ = Department.objects.get_or_create(name=department_name)
+        
+        # 檢查課程是否已存在，不存在就建立
+        course, created = Course.objects.get_or_create(
             course_code=course_code,
-            course_name=course_name,
-            course_type=course_type,
-            description=description,
-            credits=credits,
-            hours=hours,
+            defaults={
+                'course_name': course_name,
+                'course_type': course_type,
+                'description': description,
+                'credits': credits,
+            }
+        )
+        
+        if not created:
+            # 課程已存在，更新資料
+            course.course_name = course_name
+            course.course_type = course_type
+            course.description = description
+            course.credits = credits
+            course.save()
+        
+        # 建立開課資料
+        offering = CourseOffering.objects.create(
+            course=course,
+            department=department,
             academic_year=academic_year,
             semester=semester,
-            department=department,
             grade_level=grade_level,
-            teacher=teacher,
-            classroom=classroom,
-            weekday=weekday,
-            start_period=start_period,
-            end_period=end_period,
             max_students=max_students,
             current_students=0,
             status='open'
+        )
+        
+        # 建立開課教師
+        OfferingTeacher.objects.create(
+            offering=offering,
+            teacher=teacher,
+            role='main'
+        )
+        
+        # 建立上課時段
+        ClassTime.objects.create(
+            offering=offering,
+            weekday=weekday,
+            start_period=start_period,
+            end_period=end_period,
+            classroom=classroom
         )
         
         print(f"課程建立成功: {course.course_code} - {course.course_name}")
         return Response({
             'message': '課程建立成功',
             'course_id': course.id,
+            'offering_id': offering.id,
             'course_code': course.course_code,
             'course_name': course.course_name
         })
         
     except Exception as e:
         print(f"建立課程錯誤: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return Response({'error': str(e)}, status=500)
 
 
 @api_view(['GET'])
 def get_all_courses(request):
-    """獲取所有課程列表"""
+    """獲取所有開課資料"""
     try:
-        courses = Course.objects.all().select_related('teacher').order_by('-created_at')
+        offerings = CourseOffering.objects.all().select_related(
+            'course', 'department'
+        ).prefetch_related(
+            'offering_teachers__teacher__profile',
+            'class_times'
+        ).order_by('-created_at')
         
         courses_data = []
-        for course in courses:
+        for offering in offerings:
+            # 取得第一個上課時段
+            first_time = offering.class_times.first()
+            
+            # 取得主要教師
+            main_teacher = offering.offering_teachers.filter(role='main').first()
+            
             courses_data.append({
-                'id': course.id,
-                'course_code': course.course_code,
-                'course_name': course.course_name,
-                'course_type': course.course_type,
-                'description': course.description,
-                'credits': course.credits,
-                'hours': course.hours,
-                'academic_year': course.academic_year,
-                'semester': course.semester,
-                'department': course.department,
-                'grade_level': course.grade_level,
-                'teacher_id': course.teacher.id if course.teacher else None,
-                'teacher_name': course.teacher.profile.real_name if course.teacher and hasattr(course.teacher, 'profile') else '未設定',
-                'classroom': course.classroom,
-                'weekday': course.weekday,
-                'start_period': course.start_period,
-                'end_period': course.end_period,
-                'max_students': course.max_students,
-                'current_students': course.current_students,
-                'status': course.status,
+                'id': offering.id,
+                'course_code': offering.course.course_code,
+                'course_name': offering.course.course_name,
+                'course_type': offering.course.course_type,
+                'description': offering.course.description,
+                'credits': offering.course.credits,
+                'academic_year': offering.academic_year,
+                'semester': offering.semester,
+                'department': offering.department.name,
+                'grade_level': offering.grade_level,
+                'teacher_id': main_teacher.teacher.id if main_teacher else None,
+                'teacher_name': main_teacher.teacher.profile.real_name if main_teacher and hasattr(main_teacher.teacher, 'profile') else '未設定',
+                'classroom': first_time.classroom if first_time else '',
+                'weekday': first_time.weekday if first_time else '',
+                'start_period': first_time.start_period if first_time else 0,
+                'end_period': first_time.end_period if first_time else 0,
+                'max_students': offering.max_students,
+                'current_students': offering.current_students,
+                'status': offering.status,
             })
         
-        print(f"找到 {len(courses_data)} 門課程")
+        print(f"找到 {len(courses_data)} 門開課")
         return Response(courses_data)
         
     except Exception as e:
         print(f"錯誤: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return Response({'error': str(e)}, status=500)
 
 
 @csrf_exempt
 @api_view(['DELETE'])
 def delete_course(request, course_id):
-    """刪除課程"""
+    """刪除開課資料"""
     try:
-        course = Course.objects.get(id=course_id)
-        course_name = course.course_name
-        course.delete()
+        offering = CourseOffering.objects.get(id=course_id)
+        course_name = offering.course.course_name
+        offering.delete()
         
-        print(f"課程刪除成功: {course_name}")
+        print(f"開課刪除成功: {course_name}")
         return Response({'message': '課程刪除成功'})
         
-    except Course.DoesNotExist:
-        return Response({'error': '找不到該課程'}, status=404)
+    except CourseOffering.DoesNotExist:
+        return Response({'error': '找不到該開課資料'}, status=404)
     except Exception as e:
         print(f"刪除課程錯誤: {str(e)}")
         return Response({'error': str(e)}, status=500)
