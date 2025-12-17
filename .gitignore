@@ -4,3 +4,8 @@ backend/accounts/__pycache__/urls.cpython-313.pyc
 backend/accounts/__pycache__/urls.cpython-313.pyc
 frontend/src/images/maxresdefault.jpg
 .DS_Store
+backend/accounts/__pycache__/*.pyc
+backend/accounts/__pycache__/apps.cpython-313.pyc
+__pycache__/
+*.pyc
+

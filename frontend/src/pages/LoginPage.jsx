@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import axios from 'axios'
 import { useNavigate } from 'react-router-dom'
-import schoolLogo from '../images/maxresdefault.jpg'
+//import schoolLogo from '../images/maxresdefault.jpg'
 
 export default function LoginPage() {
   const [username, setUsername] = useState('')
@@ -58,11 +58,11 @@ export default function LoginPage() {
       <div className="rounded-3xl shadow-2xl p-10 w-full max-w-md">
         {/* 學校 Logo */}
         <div className="flex justify-center">
-          <img 
+          {/* <img 
             src={schoolLogo} 
             alt="學校logo" 
             className="w-64 h-auto object-contain"
-          />
+          /> */}
         </div>
         
         {/* 登入表單 */}
