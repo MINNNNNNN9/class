@@ -30,6 +30,7 @@ export default function CourseSelection() {
   const [selectedCourse, setSelectedCourse] = useState(null)
   const [loading, setLoading] = useState(false)
   const [enrolledCourses, setEnrolledCourses] = useState([])
+  const [activeTab, setActiveTab] = useState('enrolled') // 新增：當前分頁 ('enrolled' 或 'search')
 
   // API 基礎 URL
   const API_BASE_URL = 'http://localhost:8000/api'
@@ -259,9 +260,106 @@ export default function CourseSelection() {
 
   return (
     <div className="bg-white rounded-lg shadow-md p-6">
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">預選課程</h2>
+      {/* 分頁切換標籤 */}
+      <div className="flex mb-6 border-b border-gray-200">
+        <button
+          onClick={() => setActiveTab('enrolled')}
+          className={`px-6 py-3 font-semibold text-lg transition-colors ${
+            activeTab === 'enrolled'
+              ? 'text-blue-600 border-b-2 border-blue-600'
+              : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          已選課程
+        </button>
+        <button
+          onClick={() => setActiveTab('search')}
+          className={`px-6 py-3 font-semibold text-lg transition-colors ${
+            activeTab === 'search'
+              ? 'text-blue-600 border-b-2 border-blue-600'
+              : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          預選課程
+        </button>
+      </div>
+
+      {/* 已選課程頁面 */}
+      {activeTab === 'enrolled' && (
+        <div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-6">已選課程</h2>
+          
+          {loading ? (
+            <div className="text-center py-8">
+              <p className="text-gray-500">載入中...</p>
+            </div>
+          ) : enrolledCourses.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-gray-500 text-lg">您還沒有選擇任何課程</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {enrolledCourses.map(course => {
+                const timeDisplay = course.class_times && course.class_times.length > 0
+                  ? course.class_times.map(t => `${t.weekday_display} ${t.start_period}-${t.end_period}節`).join('；')
+                  : '未設定'
+                
+                return (
+                  <div
+                    key={course.id}
+                    className="bg-blue-50 rounded-lg p-6 hover:shadow-md transition-shadow"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1 grid grid-cols-4 gap-4 items-center">
+                        <div>
+                          <p className="text-sm text-gray-600 mb-1">課程名稱</p>
+                          <p className="font-bold text-gray-800 text-lg">{course.course_name}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-600 mb-1">開課系所</p>
+                          <p className="text-gray-800">{course.teacher_name}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-600 mb-1">上課時間</p>
+                          <p className="text-gray-800">{timeDisplay}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-600 mb-1">學分</p>
+                          <p className="text-gray-800">{course.credits} 學分</p>
+                        </div>
+                      </div>
+                      <div className="ml-6">
+                        <button
+                          onClick={() => dropCourse(course.id)}
+                          className="px-6 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors font-semibold"
+                        >
+                          退選
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+              
+              <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+                <p className="text-gray-700">
+                  已選課程：<span className="font-bold text-blue-600">{enrolledCourses.length}</span> 門
+                  ｜總學分：<span className="font-bold text-blue-600">
+                    {enrolledCourses.reduce((sum, course) => sum + course.credits, 0)}
+                  </span> 學分
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 預選課程頁面 */}
+      {activeTab === 'search' && (
+        <div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-6">預選課程</h2>
       
-      {/* 篩選區域 */}
+          {/* 篩選區域 */}
       <div className="mb-6 p-4 bg-gray-50 rounded-lg">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-gray-700">篩選條件</h3>
@@ -598,6 +696,8 @@ export default function CourseSelection() {
               </div>
             </div>
           </div>
+        </div>
+        )}
         </div>
       )}
     </div>

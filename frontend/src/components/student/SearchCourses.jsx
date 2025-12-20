@@ -284,11 +284,11 @@ export default function SearchCourses() {
                 </button>
               ))}
             </div>
-            {filters.weekdays.length > 0 && (
+            {/* {filters.weekdays.length > 0 && (
               <p className="text-xs text-gray-500 mt-2">
                 已選擇：{filters.weekdays.length} 天
               </p>
-            )}
+            )} */}
           </div>
         </div>
 

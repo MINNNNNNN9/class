@@ -4,6 +4,7 @@ import axios from 'axios'
 import RegisterAccount from '../components/admin/RegisterAccount'
 import CreateCourse from '../components/admin/CreateCourse'
 import ViewAllCourses from '../components/admin/ViewAllCourses'
+import ViewAllAccounts from '../components/admin/ViewAllaccounts'
 
 export default function AdminHome() {
   const [activeTab, setActiveTab] = useState('viewCourses') // 預設為查看課程
@@ -31,7 +32,8 @@ export default function AdminHome() {
   const navItems = [
     { id: 'viewCourses', label: '查看所有課程', category: 'courses' },
     { id: 'createCourse', label: '新增課程', category: 'courses' },
-    { id: 'register', label: '新增帳號', category: 'accounts' }
+    { id: 'register', label: '新增帳號', category: 'accounts' },
+    { id: 'viewAccounts', label: '查看帳號', category: 'accounts' },
   ]
 
   const renderContent = () => {
@@ -42,6 +44,8 @@ export default function AdminHome() {
         return <CreateCourse />
       case 'register':
         return <RegisterAccount />
+      case 'viewAccounts':
+        return <ViewAllAccounts />
       default:
         return <ViewAllCourses />
     }
