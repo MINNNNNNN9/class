@@ -16,7 +16,7 @@ urlpatterns = [
     path('user/credit-summary/', views_student.get_credit_summary, name='credit_summary'),
     
     # ===== 管理員功能 API =====
-    path('teachers/', views_admin.get_teachers, name='get_teachers'),
+    # path('teachers/', views_admin.get_teachers, name='get_teachers'),  # ← 註解掉，與下面衝突
     path('courses/create/', views_admin.create_course, name='create_course'),
     path('courses/<int:course_id>/delete/', views_admin.delete_course, name='delete_course'),
     
@@ -37,7 +37,7 @@ urlpatterns = [
 
     # ===== 帳號相關 API =====
     path('students/', views_account.get_all_students, name='get_all_students'),
-    path('teachers/', views_account.get_all_teachers, name='get_all_teachers'),
+    path('teachers/', views_account.get_all_teachers, name='get_all_teachers'),  # ← 保留這個
     path('students/<int:user_id>/update/', views_account.update_student, name='update_student'),
     path('teachers/<int:user_id>/update/', views_account.update_teacher, name='update_teacher'),
     path('students/<int:user_id>/delete/', views_account.delete_student, name='delete_student'),
