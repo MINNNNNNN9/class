@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
-import axios from 'axios'
+//import axios from 'axios'
 import { API_ENDPOINTS, apiClient } from '../../config/api'
-import { getCsrfToken } from '../../utils/csrf'  // ← 新增這行
+//import { getCsrfToken } from '../../utils/csrf'  // ← 新增這行
 
 
 // 獲取 CSRF token 的函數
