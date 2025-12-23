@@ -71,6 +71,22 @@ else:
 
 CORS_ALLOW_CREDENTIALS = True
 
+# ✅ 新增：允許的 CORS headers（確保 X-CSRFToken 可以被傳送）
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
+
+# ✅ 新增：暴露給前端的 headers
+CORS_EXPOSE_HEADERS = ['X-CSRFToken']
+
 # Session 設定（根據環境自動調整）
 if IS_PRODUCTION:
     SESSION_COOKIE_SAMESITE = "None"

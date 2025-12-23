@@ -17,25 +17,31 @@ from io import BytesIO
 def search_courses(request):
     """搜尋課程"""
     try:
-        # 支援 GET 和 POST 兩種方式取得參數
+        # 支持 GET 和 POST 兩種方式取得參數
         if request.method == 'GET':
             keyword = request.GET.get('keyword', '').strip()
             department = request.GET.get('department', '').strip()
             course_type = request.GET.get('course_type', '').strip()
             semester = request.GET.get('semester', '').strip()
-            weekday = request.GET.get('weekday', '').strip()
             grade_level = request.GET.get('grade_level', '').strip()
             academic_year = request.GET.get('academic_year', '114')
+            
+            # 取得複選參數（陣列）
+            weekdays = request.GET.getlist('weekdays')  # ← 改這裡
+            periods = request.GET.getlist('periods')    # ← 加這行
         else:  # POST
             keyword = request.data.get('keyword', '').strip()
             department = request.data.get('department', '').strip()
             course_type = request.data.get('course_type', '').strip()
             semester = request.data.get('semester', '').strip()
-            weekday = request.data.get('weekday', '').strip()
             grade_level = request.data.get('grade_level', '').strip()
             academic_year = request.data.get('academic_year', '114')
+            
+            # 取得複選參數（陣列）
+            weekdays = request.data.get('weekdays', [])  # ← 改這裡
+            periods = request.data.get('periods', [])    # ← 加這行
         
-        print(f"搜尋條件: keyword={keyword}, department={department}, course_type={course_type}, semester={semester}, weekday={weekday}, grade_level={grade_level}, academic_year={academic_year}")
+        print(f"搜尋條件: keyword={keyword}, department={department}, course_type={course_type}, semester={semester}, weekdays={weekdays}, periods={periods}, grade_level={grade_level}, academic_year={academic_year}")
         
         # 基本查詢：取得所有開課資料
         offerings = CourseOffering.objects.select_related(
@@ -60,9 +66,25 @@ def search_courses(request):
         if grade_level:
             offerings = offerings.filter(grade_level=int(grade_level))
         
-        if weekday:
-            offerings = offerings.filter(class_times__weekday=weekday).distinct()
+        # 星期幾篩選（支援多選）
+        if weekdays:
+            offerings = offerings.filter(class_times__weekday__in=weekdays).distinct()
         
+        # 節次篩選（支援多選）- 新增這段
+        if periods:
+            # 建立 Q 查詢來檢查時段是否有交集
+            from django.db.models import Q
+            period_query = Q()
+            for period in periods:
+                period_int = int(period)
+                # 檢查該節次是否在 start_period 和 end_period 之間
+                period_query |= Q(
+                    class_times__start_period__lte=period_int,
+                    class_times__end_period__gte=period_int
+                )
+            offerings = offerings.filter(period_query).distinct()
+        
+        # 關鍵字搜尋
         if keyword:
             offerings = offerings.filter(
                 Q(course__course_name__icontains=keyword) |
