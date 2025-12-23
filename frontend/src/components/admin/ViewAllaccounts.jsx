@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import axios from 'axios'
-import { API_ENDPOINTS } from '../../config/api'
+import { API_ENDPOINTS, apiClient } from '../../config/api'
 import { getCsrfToken } from '../../utils/csrf'  // ← 新增這行
 
 
@@ -34,48 +34,28 @@ export default function ViewAllAccounts() {
   const fetchAccounts = async () => {
     setLoading(true)
     try {
-      const endpoint = accountType === 'student' 
-        ? API_ENDPOINTS.students
-        : API_ENDPOINTS.teachers
-      
-      const response = await axios.get(endpoint, {
-        withCredentials: true
-      })
+      const endpoint = accountType === 'student' ? API_ENDPOINTS.students : API_ENDPOINTS.teachers
+      // apiClient 會自動處理 Cookie (withCredentials)
+      const response = await apiClient.get(endpoint)
       setAccounts(response.data)
     } catch (error) {
-      console.error('載入帳號失敗:', error)
-      alert('載入帳號失敗，請稍後再試')
-    } finally {
-      setLoading(false)
-    }
+      alert('載入帳號失敗')
+    } finally { setLoading(false) }
   }
 
   const handleDelete = async (accountId, name) => {
-    const accountTypeName = accountType === 'student' ? '學生' : '教師'
-    if (!confirm(`確定要刪除${accountTypeName}「${name}」嗎？`)) {
-      return
-    }
-
+    if (!confirm(`確定要刪除嗎？`)) return
     try {
-      const csrftoken = getCookie('csrftoken');
+      const url = accountType === 'student' 
+        ? API_ENDPOINTS.studentDelete(accountId) 
+        : API_ENDPOINTS.teacherDelete(accountId)
       
-      await axios.delete(
-        accountType === 'student' 
-            ? API_ENDPOINTS.studentDelete(accountId)
-            : API_ENDPOINTS.teacherDelete(accountId),
-        { 
-          withCredentials: true,
-          headers: {
-            'X-CSRFToken': getCsrfToken()
-          }
-        }
-      )
+      // ✅ 攔截器會自動補上 X-CSRFToken Header
+      await apiClient.delete(url)
       alert('刪除成功！')
       fetchAccounts()
     } catch (error) {
-      console.error('刪除失敗:', error)
-      const errorMsg = error.response?.data?.error || '刪除失敗，請稍後再試'
-      alert(errorMsg)
+      alert(error.response?.data?.error || '刪除失敗')
     }
   }
 
@@ -112,28 +92,17 @@ export default function ViewAllAccounts() {
 
   const handleEditSave = async (accountId) => {
     try {
-      const csrftoken = getCookie('csrftoken');
-      
-      await axios.put(
-        accountType === 'student'
-            ? API_ENDPOINTS.studentUpdate(accountId)
-            : API_ENDPOINTS.teacherUpdate(accountId),
-        editFormData,
-        { 
-          withCredentials: true,
-          headers: {
-            'X-CSRFToken': getCsrfToken()
-          }
-        }
-      )
+      const url = accountType === 'student'
+        ? API_ENDPOINTS.studentUpdate(accountId)
+        : API_ENDPOINTS.teacherUpdate(accountId)
+
+      // ✅ 攔截器會自動補上 X-CSRFToken Header
+      await apiClient.put(url, editFormData)
       alert('修改成功！')
       setEditingAccount(null)
-      setEditFormData({})
       fetchAccounts()
     } catch (error) {
-      console.error('修改失敗:', error)
-      const errorMsg = error.response?.data?.error || '修改失敗，請稍後再試'
-      alert(errorMsg)
+      alert(error.response?.data?.error || '修改失敗')
     }
   }
 

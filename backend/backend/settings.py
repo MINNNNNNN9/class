@@ -81,6 +81,7 @@ CORS_ALLOW_HEADERS = [
     'origin',
     'user-agent',
     'x-csrftoken',
+    'X-CSRFToken',
     'x-requested-with',
 ]
 
@@ -91,7 +92,7 @@ CORS_EXPOSE_HEADERS = ['X-CSRFToken']
 if IS_PRODUCTION:
     SESSION_COOKIE_SAMESITE = "None"
     SESSION_COOKIE_SECURE = True
-    SESSION_COOKIE_DOMAIN = ".onrender.com"
+    SESSION_COOKIE_DOMAIN = None
 else:
     SESSION_COOKIE_SAMESITE = "Lax"
     SESSION_COOKIE_SECURE = False
@@ -115,7 +116,7 @@ else:
 if IS_PRODUCTION:
     CSRF_COOKIE_SAMESITE = "None"
     CSRF_COOKIE_SECURE = True
-    CSRF_COOKIE_DOMAIN = ".onrender.com"
+    CSRF_COOKIE_DOMAIN = None
 else:
     CSRF_COOKIE_SAMESITE = "Lax"
     CSRF_COOKIE_SECURE = False

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 // 關鍵：導入封裝好的 apiClient 與端點定義
-import { API_ENDPOINTS, apiClient } from '../config/api'
+import { API_ENDPOINTS, apiClient, setStoredCsrfToken } from '../config/api'
 import schoolLogo from '../images/maxresdefault.jpg'
 
 export default function LoginPage() {
@@ -26,33 +26,28 @@ export default function LoginPage() {
 
   const handleLogin = async () => {
     try {
-      // ✅ 改用 apiClient：不需要手動 getCookie，不需要手動寫 headers
-      // 攔截器會自動幫你補上 X-CSRFToken
       const res = await apiClient.post(API_ENDPOINTS.login, {
         username,
         password
       })
       
-      console.log('登入成功數據：', res.data)
-      
-      const { role, roles: userRoles, real_name } = res.data
+      // ✅ 關鍵：將回傳的 Token 存入 localStorage
+      if (res.data.csrfToken) {
+        setStoredCsrfToken(res.data.csrfToken)
+        console.log('✅ CSRF Token 已更新並儲存')
+      }
 
-      // 儲存用戶資訊
+      const { role, roles: userRoles, real_name } = res.data
       localStorage.setItem('username', username)
       if (real_name) localStorage.setItem('realName', real_name)
       
-      // 角色跳轉邏輯
-      if (role) {
-        navigate(`/${role}home`)
-      } else if (userRoles && userRoles.length > 0) {
-        // 如果有多個角色，顯示選擇按鈕
-        setRoles(userRoles)
-      }
+      // 導向邏輯 ...
+      if (role) navigate(`/${role}home`)
+      else if (userRoles) setRoles(userRoles)
+      
     } catch (err) {
-      console.error('登入報錯:', err)
-      // Axios 的錯誤訊息通常在 err.response.data
-      const message = err.response?.data?.error || err.message
-      alert('登入失敗: ' + message)
+      const message = err.response?.data?.error || '登入失敗'
+      alert(message)
     }
   }
   

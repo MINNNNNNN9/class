@@ -56,7 +56,6 @@ def register(request):
 @ensure_csrf_cookie
 @api_view(['POST'])
 def login_view(request):
-    """使用者登入"""
     username = request.data.get('username')
     password = request.data.get('password')
 
@@ -70,13 +69,13 @@ def login_view(request):
         profile = Profile.objects.get(user=user)
         roles = [r.name for r in profile.roles.all()]
         
-        # ✅ 取得 CSRF token
+        # ✅ 取得全新的 CSRF token 並回傳
         csrf_token = get_token(request)
         
         response_data = {
             'username': username,
             'real_name': profile.real_name,
-            'csrfToken': csrf_token,  # ← 新增：返回 CSRF token
+            'csrfToken': csrf_token, # 回傳給前端儲存在 localStorage
         }
         
         if len(roles) == 1:
@@ -84,9 +83,7 @@ def login_view(request):
         else:
             response_data['roles'] = roles
             
-        print(f"✅ 用戶登入成功: {username}, CSRF Token: {csrf_token[:20]}...")
         return Response(response_data)
-        
     except Profile.DoesNotExist:
         return Response({'error': '找不到使用者資料'}, status=404)
 
