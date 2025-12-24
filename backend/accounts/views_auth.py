@@ -90,53 +90,30 @@ def login_view(request):
     
     # 清除舊 session
     if request.user.is_authenticated:
-        print(f"⚠️ 檢測到舊 session (用戶: {request.user.username})，清除中...")
         django_logout(request)
 
     # 驗證帳號密碼
     user = authenticate(username=username, password=password)
     if user is None:
-        print(f"❌ 認證失敗: 帳號或密碼錯誤")
         return Response({'error': '帳號或密碼錯誤'}, status=401)
 
     # 建立新的 session
     django_login(request, user)
-    print(f"✅ 用戶 {username} 登入成功，創建新 session")
 
     try:
-        try:
-            profile = Profile.objects.get(user=user)
-        except Profile.DoesNotExist:
-            # 找不到 Profile，自動建立
-            print(f"⚠️ User {username} has no profile. Auto-creating...")
-            profile = Profile.objects.create(
-                user=user, 
-                real_name=user.username,
-                grade=None
-            )
-            
-            # 分配預設角色
-            if user.is_superuser:
-                role_name = 'admin'
-            elif user.is_staff:
-                role_name = 'teacher' 
-            else:
-                role_name = 'student'
-                
-            role, _ = Role.objects.get_or_create(name=role_name)
-            profile.roles.add(role)
-
+        profile, created = Profile.objects.get_or_create(user=user)
+        
         # 確保超級管理員有 admin 角色
         if user.is_superuser:
             admin_role, _ = Role.objects.get_or_create(name='admin')
             if not profile.roles.filter(name='admin').exists():
                 profile.roles.add(admin_role)
 
+        # 獲取所有角色清單
         roles = [r.name for r in profile.roles.all()]
         
         # 生成 CSRF token
         csrf_token = get_token(request)
-        print(f"🔑 生成 CSRF token: {csrf_token[:30]}...")
         
         # 管理員免除強制修改
         should_force = profile.force_password_change
@@ -148,27 +125,17 @@ def login_view(request):
             'real_name': profile.real_name,
             'csrfToken': csrf_token,
             'force_password_change': should_force,
+            'roles': roles, # ✅ 永遠回傳完整角色陣列
         }
         
-        # 決定導向頁面
-        if 'student' in roles:
-            response_data['role'] = 'student'
-        elif 'teacher' in roles:
-            response_data['role'] = 'teacher'
-        elif 'admin' in roles:
-            response_data['role'] = 'admin'
-        else:
-            response_data['roles'] = roles
-        
-        print(f"📤 返回數據: username={username}, csrfToken={csrf_token[:30]}..., role={response_data.get('role', 'N/A')}")
-        print(f"{'='*60}\n")
+        # ✅ 只有在身份唯一時，才提供單一導向用的 role 欄位
+        if len(roles) == 1:
+            response_data['role'] = roles[0]
         
         return Response(response_data)
         
     except Exception as e:
         print(f"❌ 登入錯誤: {str(e)}")
-        import traceback
-        traceback.print_exc()
         return Response({'error': f"系統錯誤: {str(e)}"}, status=500)
 
 
@@ -177,51 +144,13 @@ def login_view(request):
 def logout_view(request):
     """使用者登出"""
     try:
-        username = request.user.username if request.user.is_authenticated else '未知用戶'
-        print(f"👋 用戶登出: {username}")
-        
-        # 執行登出
         django_logout(request)
-        
-        # 清除 localStorage 中的 token
-        response = Response({
-            'message': '登出成功',
-            'status': 'success',
-            'clear_storage': True  # 告訴前端清除 localStorage
-        })
-        
-        # 刪除 sessionid cookie
-        response.delete_cookie(
-            'sessionid',
-            path='/',
-            samesite='None' if os.environ.get('DATABASE_URL') else 'Lax',
-            domain=None
-        )
-        
-        # 刪除 csrftoken cookie
-        response.delete_cookie(
-            'csrftoken',
-            path='/',
-            samesite='None' if os.environ.get('DATABASE_URL') else 'Lax',
-            domain=None
-        )
-        
-        # 設置快取控制
-        response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-        response['Pragma'] = 'no-cache'
-        response['Expires'] = '0'
-        
-        print(f"✅ 登出成功，已清除 cookies")
+        response = Response({'message': '登出成功', 'status': 'success'})
+        response.delete_cookie('sessionid')
+        response.delete_cookie('csrftoken')
         return response
-        
     except Exception as e:
-        print(f"❌ 登出錯誤: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return Response({
-            'error': str(e),
-            'status': 'error'
-        }, status=500)
+        return Response({'error': str(e)}, status=500)
 
 
 @api_view(['POST'])
@@ -236,23 +165,16 @@ def change_password(request):
     if not old_password or not new_password:
         return Response({'error': '請輸入舊密碼和新密碼'}, status=400)
         
-    # 驗證舊密碼
     if not request.user.check_password(old_password):
         return Response({'error': '舊密碼錯誤'}, status=400)
         
-    # 設定新密碼
     request.user.set_password(new_password)
     request.user.save()
     
-    # 更新強制修改密碼狀態
     if hasattr(request.user, 'profile'):
         request.user.profile.force_password_change = False
         request.user.profile.save()
     
-    # 修改密碼後更新 session auth hash 以保持登入狀態
     from django.contrib.auth import update_session_auth_hash
     update_session_auth_hash(request, request.user)
-    
-    print(f"✅ 用戶 {request.user.username} 密碼修改成功")
-    
     return Response({'message': '密碼修改成功'})

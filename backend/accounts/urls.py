@@ -35,6 +35,7 @@ urlpatterns = [
     path('courses/<int:course_id>/enroll/', views_course.enroll_course, name='enroll_course'),
     path('courses/<int:course_id>/drop/', views_course.drop_course, name='drop_course'),
     path('courses/enrolled/', views_course.get_enrolled_courses, name='get_enrolled_courses'),
+    path('courses/<int:course_id>/', views_admin.get_course_detail, name='course-detail'),
 
     # ===== 帳號相關 API =====
     path('students/', views_account.get_all_students, name='get_all_students'),

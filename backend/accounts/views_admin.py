@@ -258,6 +258,52 @@ def create_course(request):
         import traceback
         traceback.print_exc()
         return Response({'error': str(e)}, status=500)
+    
+@api_view(['GET'])
+def get_course_detail(request, course_id):
+    """獲取單一課程的詳細資料，用於編輯表單回填"""
+    try:
+        # 1. 取得開課紀錄 (CourseOffering)
+        offering = CourseOffering.objects.select_related('course', 'department').get(id=course_id)
+        
+        # 2. 取得上課時間 (只取第一個，因為你的表單目前只支援設定一組時間)
+        first_time = offering.class_times.first()
+        
+        # 3. 取得主要教師 ID
+        main_teacher_rel = offering.offering_teachers.filter(role='main').first()
+        main_teacher_id = main_teacher_rel.teacher.id if main_teacher_rel else ""
+        
+        # 4. 取得協同教師 ID 列表
+        co_teachers = list(offering.offering_teachers.filter(role='co').values_list('teacher_id', flat=True))
+        
+        # 5. 打包資料 (結構必須完全對應前端 CreateCourse.jsx 的 formData)
+        data = {
+            'course_code': offering.course.course_code,
+            'course_name': offering.course.course_name,
+            'course_type': offering.course.course_type,
+            'description': offering.course.description,
+            'credits': str(offering.course.credits),
+            'hours': str(offering.course.credits), # 假設與學分相同
+            'academic_year': offering.academic_year,
+            'semester': offering.semester,
+            'department': offering.department.name,
+            'grade_level': str(offering.grade_level),
+            'teacher_id': main_teacher_id,
+            'use_new_teacher': False,
+            'co_teachers': co_teachers,
+            'classroom': first_time.classroom if first_time else "",
+            'weekday': first_time.weekday if first_time else "1",
+            'start_period': str(first_time.start_period) if first_time else "1",
+            'end_period': str(first_time.end_period) if first_time else "2",
+            'max_students': str(offering.max_students)
+        }
+        
+        return Response(data)
+        
+    except CourseOffering.DoesNotExist:
+        return Response({'error': '找不到該課程'}, status=404)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
 
 
 @api_view(['GET'])

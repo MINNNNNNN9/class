@@ -114,8 +114,11 @@ export const API_ENDPOINTS = {
   myTeachingCourses: `${baseURL}/courses/my-teaching/`,
   historyCourses: `${baseURL}/courses/history/`,
   creditSummary: `${baseURL}/user/credit-summary/`,
-  dropCourse: `${baseURL}/courses/drop/`,
-  enrollCourse: `${baseURL}/courses/enroll/`,
+  courseDetail: (id) => `${baseURL}/courses/${id}/`,
+  courseDelete: (id) => `${baseURL}/courses/${id}/delete/`,
+  enrollCourse: (id) => `${baseURL}/courses/${id}/enroll/`,
+  dropCourse: (id) => `${baseURL}/courses/${id}/drop/`,
+  
 
   // 篩選選單
   filterOptions: `${baseURL}/courses/filter-options/`,
