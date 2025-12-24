@@ -20,14 +20,17 @@ def register(request):
     role_name = request.data.get('role')
     real_name = request.data.get('real_name')
     
+    # 學生專用欄位
     student_id = request.data.get('student_id')
     department = request.data.get('department')
     grade = request.data.get('grade', 3)
     
+    # 教師專用欄位
     teacher_id = request.data.get('teacher_id')
     office = request.data.get('office')
     title = request.data.get('title')
     
+    # 自動設定帳號 (username)
     if role_name == 'student':
         if not student_id:
             return Response({'error': '學生角色必須填寫學號'}, status=400)
@@ -40,7 +43,9 @@ def register(request):
     if not username or not password or not role_name:
         return Response({'error': '缺少必要欄位'}, status=400)
 
-    if grade == '': grade = None
+    # 處理數值欄位，避免空字串導致錯誤
+    if grade == '': 
+        grade = None
     
     if User.objects.filter(username=username).exists():
         return Response({'error': '帳號(學號/教師編號)已存在'}, status=400)
@@ -59,6 +64,7 @@ def register(request):
             title=title
         )
         
+        # 確保角色存在
         role, _ = Role.objects.get_or_create(name=role_name)
         profile.roles.add(role)
         profile.save()
@@ -86,18 +92,21 @@ def login_view(request):
         print(f"⚠️ 檢測到舊 session (用戶: {request.user.username})，清除中...")
         django_logout(request)
 
+    # 驗證帳號密碼
     user = authenticate(username=username, password=password)
     if user is None:
         print(f"❌ 認證失敗: 帳號或密碼錯誤")
         return Response({'error': '帳號或密碼錯誤'}, status=401)
 
+    # 建立新的 session
     django_login(request, user)
-    print(f"✅ 用戶 {username} 登入成功")
+    print(f"✅ 用戶 {username} 登入成功，創建新 session")
 
     try:
         try:
             profile = Profile.objects.get(user=user)
         except Profile.DoesNotExist:
+            # 找不到 Profile，自動建立
             print(f"⚠️ User {username} has no profile. Auto-creating...")
             profile = Profile.objects.create(
                 user=user, 
@@ -105,6 +114,7 @@ def login_view(request):
                 grade=None
             )
             
+            # 分配預設角色
             if user.is_superuser:
                 role_name = 'admin'
             elif user.is_staff:
@@ -115,6 +125,7 @@ def login_view(request):
             role, _ = Role.objects.get_or_create(name=role_name)
             profile.roles.add(role)
 
+        # 確保超級管理員有 admin 角色
         if user.is_superuser:
             admin_role, _ = Role.objects.get_or_create(name='admin')
             if not profile.roles.filter(name='admin').exists():
@@ -126,6 +137,7 @@ def login_view(request):
         csrf_token = get_token(request)
         print(f"🔑 生成 CSRF token: {csrf_token[:30]}...")
         
+        # 管理員免除強制修改
         should_force = profile.force_password_change
         if user.is_superuser or 'admin' in roles:
             should_force = False
@@ -137,6 +149,7 @@ def login_view(request):
             'force_password_change': should_force,
         }
         
+        # 決定導向頁面
         if 'student' in roles:
             response_data['role'] = 'student'
         elif 'teacher' in roles:
@@ -212,16 +225,20 @@ def change_password(request):
     if not old_password or not new_password:
         return Response({'error': '請輸入舊密碼和新密碼'}, status=400)
         
+    # 驗證舊密碼
     if not request.user.check_password(old_password):
         return Response({'error': '舊密碼錯誤'}, status=400)
         
+    # 設定新密碼
     request.user.set_password(new_password)
     request.user.save()
     
+    # 更新強制修改密碼狀態
     if hasattr(request.user, 'profile'):
         request.user.profile.force_password_change = False
         request.user.profile.save()
     
+    # 修改密碼後更新 session auth hash 以保持登入狀態
     from django.contrib.auth import update_session_auth_hash
     update_session_auth_hash(request, request.user)
     
