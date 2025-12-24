@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import axios from 'axios'
 import { useNavigate } from 'react-router-dom'
 import schoolLogo from '../images/maxresdefault.jpg'
-import { API_ENDPOINTS } from '../config/api'
+import { API_ENDPOINTS, setStoredCsrfToken } from '../config/api'
 import { useLanguage } from '../contexts/LanguageContext'
 import { useToast } from '../contexts/ToastContext'
 import LanguageSwitch from '../components/LanguageSwitch'
@@ -20,11 +20,6 @@ export default function LoginPage() {
   const { t } = useLanguage()
   const { toast } = useToast()
 
-  // ❌ 移除 fetchCSRFToken，登入不需要預先獲取 token
-  // useEffect(() => {
-  //   fetchCSRFToken()
-  // }, [])
-
   const handleLogin = async () => {
     if (!username || !password) {
       toast.warning(t('login.emptyFields'))
@@ -35,13 +30,18 @@ export default function LoginPage() {
     try {
       console.log('開始登入流程...')
       
+      // ✅ 關鍵修復：登入前先清除所有舊的認證資訊
+      localStorage.removeItem('csrftoken')
+      localStorage.removeItem('username')
+      localStorage.removeItem('realName')
+      console.log('已清除舊的 localStorage 資料')
+      
       // ✅ 登入請求不需要 CSRF token（後端已設置 @csrf_exempt）
       const res = await axios.post(API_ENDPOINTS.login, {
         username, 
         password
       }, {
         withCredentials: true
-        // ❌ 不需要 headers: { 'X-CSRFToken': ... }
       })
 
       console.log('登入成功，回應數據:', res.data)
@@ -54,7 +54,7 @@ export default function LoginPage() {
 
       // ✅ 儲存後端回傳的 CSRF Token（使用小寫 csrftoken）
       if (res.data.csrfToken) {
-        localStorage.setItem('csrftoken', res.data.csrfToken)
+        setStoredCsrfToken(res.data.csrfToken)  // 這會儲存到 localStorage['csrftoken']
         console.log('✅ CSRF token 已儲存到 localStorage')
       } else {
         console.warn('⚠️ 後端沒有回傳 csrfToken')
@@ -95,7 +95,17 @@ export default function LoginPage() {
     } catch (err) {
       console.error('登入錯誤:', err)
       console.error('錯誤詳情:', err.response?.data)
-      toast.error(t('login.loginError') + ': ' + (err.response?.data?.error || err.response?.data?.detail || err.message))
+      
+      // ✅ 關鍵修復：登入失敗時也清除 localStorage
+      localStorage.removeItem('csrftoken')
+      localStorage.removeItem('username')
+      localStorage.removeItem('realName')
+      
+      const errorMessage = err.response?.data?.error 
+        || err.response?.data?.detail 
+        || err.message
+      
+      toast.error(t('login.loginError') + ': ' + errorMessage)
     } finally {
       setIsLoading(false)
     }

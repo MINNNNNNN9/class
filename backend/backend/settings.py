@@ -88,7 +88,7 @@ CORS_ALLOW_HEADERS = [
 # ✅ 新增：暴露給前端的 headers
 CORS_EXPOSE_HEADERS = ['X-CSRFToken']
 
-# Session 設定（根據環境自動調整）
+# ===== Session 設定（根據環境自動調整）=====
 if IS_PRODUCTION:
     SESSION_COOKIE_SAMESITE = "None"
     SESSION_COOKIE_SECURE = True
@@ -99,9 +99,15 @@ else:
     SESSION_COOKIE_DOMAIN = None
 
 SESSION_COOKIE_HTTPONLY = True
-SESSION_COOKIE_AGE = 86400
+SESSION_COOKIE_AGE = 86400  # 24小時
+SESSION_COOKIE_NAME = 'sessionid'
 
-# CSRF 設定（根據環境自動調整）
+# ✅ 新增：Session 優化設定
+SESSION_SAVE_EVERY_REQUEST = False  # 不要每次請求都保存 session，提升性能
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False  # 關閉瀏覽器不清除 session
+SESSION_ENGINE = 'django.contrib.sessions.backends.db'  # 使用資料庫儲存 session
+
+# ===== CSRF 設定（根據環境自動調整）=====
 default_csrf_origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
@@ -125,6 +131,9 @@ else:
 CSRF_COOKIE_HTTPONLY = False
 CSRF_USE_SESSIONS = False
 CSRF_COOKIE_NAME = 'csrftoken'
+
+# ✅ 新增：CSRF Token 有效期設定（1年），避免頻繁過期
+CSRF_COOKIE_AGE = 31449600  # 365天
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [

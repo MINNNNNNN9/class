@@ -26,7 +26,6 @@ def register(request):
     grade = request.data.get('grade', 3)
     
     # 教師專用欄位
-    # 教師專用欄位
     teacher_id = request.data.get('teacher_id')
     office = request.data.get('office')
     title = request.data.get('title')
@@ -81,14 +80,23 @@ def register(request):
 @csrf_exempt
 @api_view(['POST'])
 def login_view(request):
+    """使用者登入"""
     username = request.data.get('username')
     password = request.data.get('password')
 
+    # ✅ 關鍵修復：登入前先清除舊的 session
+    if request.user.is_authenticated:
+        print(f"檢測到舊 session，清除中...")
+        django_logout(request)
+
+    # 驗證帳號密碼
     user = authenticate(username=username, password=password)
     if user is None:
         return Response({'error': '帳號或密碼錯誤'}, status=401)
 
+    # 建立新的 session
     django_login(request, user)
+    print(f"用戶 {username} 登入成功，創建新 session")
 
     try:
         try:
@@ -113,7 +121,6 @@ def login_view(request):
                 role_name = 'student'
                 verbose = '學生'
                 
-                
             role, _ = Role.objects.get_or_create(name=role_name)
             profile.roles.add(role)
 
@@ -127,6 +134,7 @@ def login_view(request):
         
         # ✅ 取得全新的 CSRF token 並回傳
         csrf_token = get_token(request)
+        print(f"生成新的 CSRF token: {csrf_token[:20]}...")
         
         # 管理員免除強制修改
         should_force = profile.force_password_change
@@ -136,7 +144,7 @@ def login_view(request):
         response_data = {
             'username': username,
             'real_name': profile.real_name,
-            'csrfToken': csrf_token, # 回傳給前端儲存在 localStorage
+            'csrfToken': csrf_token,  # 回傳給前端儲存在 localStorage
             'force_password_change': should_force,
         }
         
@@ -149,8 +157,15 @@ def login_view(request):
             response_data['role'] = 'admin'
         else:
             response_data['roles'] = roles
-            
-        return Response(response_data)
+        
+        # ✅ 創建 Response
+        response = Response(response_data)
+        
+        # ✅ 確保 CORS 允許 credentials
+        response['Access-Control-Allow-Credentials'] = 'true'
+        
+        return response
+        
     except Profile.DoesNotExist:
         return Response({'error': '找不到使用者資料'}, status=404)
     except Exception as e:
@@ -165,6 +180,7 @@ def login_view(request):
 def logout_view(request):
     """使用者登出"""
     try:
+        print(f"用戶登出: {request.user.username if request.user.is_authenticated else '未知'}")
         django_logout(request)
         
         response = Response({
@@ -172,6 +188,7 @@ def logout_view(request):
             'status': 'success'
         })
         
+        # 清除 cookies
         response.delete_cookie(
             'sessionid',
             path='/',
@@ -186,6 +203,7 @@ def logout_view(request):
             samesite='None'
         )
         
+        # 防止快取
         response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
         response['Pragma'] = 'no-cache'
         response['Expires'] = '0'
@@ -225,8 +243,10 @@ def change_password(request):
         request.user.profile.force_password_change = False
         request.user.profile.save()
     
-    # 修改密碼後需要重新登入，或者更新 session auth hash 以保持登入狀態
+    # 修改密碼後更新 session auth hash 以保持登入狀態
     from django.contrib.auth import update_session_auth_hash
     update_session_auth_hash(request, request.user)
+    
+    print(f"用戶 {request.user.username} 密碼修改成功")
     
     return Response({'message': '密碼修改成功'})

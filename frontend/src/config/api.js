@@ -7,7 +7,7 @@ const baseURL = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BAS
 
 export default baseURL
 
-// ===== 1. CSRF Token 存取工具 (解決匯出錯誤) =====
+// ===== 1. CSRF Token 存取工具 =====
 
 /**
  * 儲存 Token 到 localStorage
@@ -67,21 +67,38 @@ apiClient.interceptors.request.use(
   (error) => Promise.reject(error)
 )
 
-// ===== 4. 響應攔截器：處理錯誤 =====
+// ===== 4. 響應攔截器：處理錯誤和 Session 過期 =====
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 403) {
-      console.error('CSRF 驗證失敗，請檢查是否已登入')
-    } else if (error.response?.status === 401) {
-      console.error('未授權，請重新登入')
+    const status = error.response?.status
+    
+    if (status === 403) {
+      console.error('❌ CSRF 驗證失敗')
+      
+      // 如果是 CSRF 錯誤且不在登入頁面，可能是 session 過期
+      if (!window.location.pathname.includes('/login')) {
+        console.log('⚠️ Session 可能已過期，清除本地資料並導向登入頁')
+        localStorage.clear()
+        window.location.href = '/login'
+      }
+    } else if (status === 401) {
+      console.error('❌ 未授權，請重新登入')
+      
+      // 只在非登入頁面時導向登入頁
+      if (!window.location.pathname.includes('/login')) {
+        localStorage.clear()
+        window.location.href = '/login'
+      }
     }
+    
     return Promise.reject(error)
   }
 )
 
 // ===== 5. API 端點定義 =====
-export const API_ENDPOINTS = { // 認證相關
+export const API_ENDPOINTS = {
+  // 認證相關
   login: `${baseURL}/login/`,
   logout: `${baseURL}/logout/`,
   register: `${baseURL}/register/`,
@@ -90,15 +107,15 @@ export const API_ENDPOINTS = { // 認證相關
   // 課程相關
   courses: `${baseURL}/courses/`,
   searchCourses: `${baseURL}/courses/search/`,
-  coursesCreate: `${baseURL}/courses/create/`, // 新增課程
-  addCourse: `${baseURL}/courses/create/`, // 修正：統一指向 create
+  coursesCreate: `${baseURL}/courses/create/`,
+  addCourse: `${baseURL}/courses/create/`,
   semesterCourses: `${baseURL}/courses/semester/`,
   myCourses: `${baseURL}/courses/my/`,
-  myTeachingCourses: `${baseURL}/courses/my-teaching/`, // 教師授課列表
+  myTeachingCourses: `${baseURL}/courses/my-teaching/`,
   historyCourses: `${baseURL}/courses/history/`,
   creditSummary: `${baseURL}/user/credit-summary/`,
-  dropCourse: `${baseURL}/courses/drop/`, // 退選
-  enrollCourse: `${baseURL}/courses/enroll/`, // 加選
+  dropCourse: `${baseURL}/courses/drop/`,
+  enrollCourse: `${baseURL}/courses/enroll/`,
 
   // 篩選選單
   filterOptions: `${baseURL}/courses/filter-options/`,
@@ -110,7 +127,7 @@ export const API_ENDPOINTS = { // 認證相關
   teachers: `${baseURL}/teachers/`,
   teacherUpdate: (id) => `${baseURL}/teachers/${id}/update/`,
   teacherDelete: (id) => `${baseURL}/teachers/${id}/delete/`,
-  resetPassword: (id) => `${baseURL}/accounts/${id}/reset-password/`, // 重設密碼
+  resetPassword: (id) => `${baseURL}/accounts/${id}/reset-password/`,
 
   // 帳號管理
   userProfile: `${API_BASE_URL}/user/profile/`,
