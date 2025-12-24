@@ -262,14 +262,51 @@ def create_course(request):
 
 @api_view(['GET'])
 def get_all_courses(request):
-    """獲取所有開課資料（包含所有教師資訊）"""
+    """獲取所有開課資料（包含所有教師資訊），支持篩選"""
     try:
+        # 獲取查詢參數
+        academic_year = request.GET.get('academic_year', '')
+        semester = request.GET.get('semester', '')
+        department = request.GET.get('department', '')
+        grade_level = request.GET.get('grade_level', '')
+        keyword = request.GET.get('keyword', '').strip()
+        
+        print(f"管理員查詢課程 - 學年:{academic_year}, 學期:{semester}, 系所:{department}, 年級:{grade_level}, 關鍵字:{keyword}")
+        
+        # 基本查詢
         offerings = CourseOffering.objects.all().select_related(
             'course', 'department'
         ).prefetch_related(
             'offering_teachers__teacher__profile',
             'class_times'
-        ).order_by('-created_at')
+        )
+        
+        # 應用篩選條件
+        if academic_year:
+            offerings = offerings.filter(academic_year=academic_year)
+        
+        if semester:
+            offerings = offerings.filter(semester=semester)
+        
+        if department:
+            offerings = offerings.filter(department__name=department)
+        
+        if grade_level:
+            offerings = offerings.filter(grade_level=int(grade_level))
+        
+        # 關鍵字搜尋（課程代碼、課程名稱、教師姓名）
+        if keyword:
+            from django.db.models import Q
+            offerings = offerings.filter(
+                Q(course__course_name__icontains=keyword) |
+                Q(course__course_code__icontains=keyword) |
+                Q(offering_teachers__teacher__profile__real_name__icontains=keyword)
+            ).distinct()
+        
+        # 排序
+        offerings = offerings.order_by('-created_at')
+        
+        print(f"找到 {offerings.count()} 門開課")
         
         courses_data = []
         for offering in offerings:
@@ -308,6 +345,29 @@ def get_all_courses(request):
                 'hours': offering.course.credits,  # 假設時數等於學分
                 'academic_year': offering.academic_year,
                 'semester': offering.semester,
+                'department': offering.department.name,
+                'grade_level': offering.grade_level,
+                'teacher_id': main_teacher.teacher.id if main_teacher else None,
+                'teacher_name': main_teacher.teacher.profile.real_name if main_teacher and hasattr(main_teacher.teacher, 'profile') else '未設定',
+                'teacher_display': teacher_display,  # 完整的教師顯示文字
+                'co_teachers': co_teacher_ids,  # 協同教師 ID 列表
+                'co_teacher_names': co_teacher_names,  # 協同教師名稱列表
+                'classroom': first_time.classroom if first_time else '',
+                'weekday': first_time.weekday if first_time else '',
+                'start_period': first_time.start_period if first_time else 0,
+                'end_period': first_time.end_period if first_time else 0,
+                'max_students': offering.max_students,
+                'current_students': offering.current_students,
+                'status': offering.status,
+            })
+        
+        print(f"返回 {len(courses_data)} 門開課資料")
+        return Response(courses_data)
+        
+    except Exception as e:
+        print(f"錯誤: {str(e)}")
+        import traceback
+        traceback.print_exc()({
                 'department': offering.department.name,
                 'grade_level': offering.grade_level,
                 'teacher_id': main_teacher.teacher.id if main_teacher else None,

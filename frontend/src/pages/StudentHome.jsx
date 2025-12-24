@@ -11,7 +11,7 @@ import { useToast } from '../contexts/ToastContext'
 import LanguageSwitch from '../components/LanguageSwitch'
 import ThemeSwitch from '../components/ThemeSwitch'
 
-// å¾ž cookie å–å¾— CSRF token
+// 從 cookie 取得 CSRF token
 function getCookie(name) {
   const value = `; ${document.cookie}`
   const parts = value.split(`; ${name}=`)
@@ -77,10 +77,10 @@ export default function StudentHome() {
         <div className="flex items-center justify-between mb">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center shadow-lg">
-              <span className="text-white font-bold text-xl">åŒ—</span>
+              <span className="text-white font-bold text-xl">北</span>
             </div>
             <div>
-              <h1 className="text-lg font-bold text-gray-800 dark:text-gray-100">åœ‹ç«‹è‡ºåŒ—è­·ç†å¥åº·å¤§å­¸</h1>
+              <h1 className="text-lg font-bold text-gray-800 dark:text-gray-100">國立臺北護理健康大學</h1>
               <p className="text-xs text-gray-600 dark:text-gray-400">National Taipei University of Nursing and Health Sciences</p>
             </div>
           </div>
@@ -90,7 +90,7 @@ export default function StudentHome() {
             <ThemeSwitch />
             <LanguageSwitch />
             <span className="text-gray-700 dark:text-gray-300 font-medium hidden md:inline">
-              {t('nav.welcome')}ï¼Œ<span className="text-blue-600 dark:text-blue-400 font-bold">{realName}</span>
+              {t('nav.welcome')}，<span className="text-blue-600 dark:text-blue-400 font-bold">{realName}</span>
             </span>
             <button
               onClick={handleLogout}

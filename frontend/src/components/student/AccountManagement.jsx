@@ -8,18 +8,32 @@ import ChangePasswordModal from '../ChangePasswordModal'
 import { AccountManagementSkeleton } from '../Skeleton'
 
 // 獲取 CSRF token
-function getCookie(name) {
+function getCSRFToken() {
+  // 優先從 localStorage 獲取
+  const token = localStorage.getItem('csrftoken');
+  if (token) {
+    console.log('✅ 使用 localStorage 中的 CSRF token');
+    return token;
+  }
+  
+  // 備用：從 cookie 獲取
   let cookieValue = null;
   if (document.cookie && document.cookie !== '') {
     const cookies = document.cookie.split(';');
     for (let i = 0; i < cookies.length; i++) {
       const cookie = cookies[i].trim();
-      if (cookie.substring(0, name.length + 1) === (name + '=')) {
-        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+      if (cookie.substring(0, 10) === 'csrftoken=') {
+        cookieValue = decodeURIComponent(cookie.substring(10));
+        console.log('✅ 使用 cookie 中的 CSRF token');
         break;
       }
     }
   }
+  
+  if (!cookieValue) {
+    console.warn('⚠️ 無法獲取 CSRF token');
+  }
+  
   return cookieValue;
 }
 
@@ -123,7 +137,15 @@ export default function AccountManagement() {
       const formData = new FormData()
       formData.append('avatar', file)
 
-      const csrfToken = getCookie('csrftoken')
+      const csrfToken = getCSRFToken()
+      
+      if (!csrfToken) {
+        toast.error('無法獲取 CSRF token，請重新登入')
+        setUploading(false)
+        return
+      }
+
+      console.log('上傳大頭貼，使用 CSRF token:', csrfToken.substring(0, 20) + '...')
 
       const response = await axios.post(API_ENDPOINTS.avatarUpload, formData, {
         withCredentials: true,
@@ -137,6 +159,7 @@ export default function AccountManagement() {
       toast.success(t('account.uploadSuccess'))
     } catch (error) {
       console.error('上傳失敗:', error)
+      console.error('錯誤詳情:', error.response?.data)
       toast.error(t('account.uploadError') + ': ' + (error.response?.data?.error || error.message))
     } finally {
       setUploading(false)
@@ -153,7 +176,12 @@ export default function AccountManagement() {
     if (!confirm(t('account.deleteConfirm'))) return
 
     try {
-      const csrfToken = getCookie('csrftoken')
+      const csrfToken = getCSRFToken()
+      
+      if (!csrfToken) {
+        toast.error('無法獲取 CSRF token，請重新登入')
+        return
+      }
 
       await axios.delete(API_ENDPOINTS.avatarDelete, {
         withCredentials: true,
