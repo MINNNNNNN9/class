@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import axios from 'axios'
 import { useNavigate } from 'react-router-dom'
 import schoolLogo from '../images/maxresdefault.jpg'
-import { API_ENDPOINTS } from '../config/api'
+import { API_ENDPOINTS, setStoredCsrfToken } from '../config/api'
 import { useLanguage } from '../contexts/LanguageContext'
 import { useToast } from '../contexts/ToastContext'
 import LanguageSwitch from '../components/LanguageSwitch'
@@ -71,6 +71,11 @@ export default function LoginPage() {
       localStorage.setItem('username', username)
       if (res.data.real_name) {
         localStorage.setItem('realName', res.data.real_name)
+      }
+
+      // 儲存 CSRF Token
+      if (res.data.csrfToken) {
+        setStoredCsrfToken(res.data.csrfToken)
       }
 
       toast.success(t('common.success'))
