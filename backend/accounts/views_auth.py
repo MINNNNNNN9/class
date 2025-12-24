@@ -4,13 +4,14 @@
 """
 from django.contrib.auth import authenticate, login as django_login, logout as django_logout
 from django.contrib.auth.models import User
-from django.views.decorators.csrf import ensure_csrf_cookie
+from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
 from django.middleware.csrf import get_token
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from .models import Profile, Role
 
 
+@csrf_exempt
 @api_view(['POST'])
 def register(request):
     """使用者註冊"""
@@ -77,7 +78,7 @@ def register(request):
         return Response({'error': f"系統錯誤: {str(e)}"}, status=500)
 
 
-@ensure_csrf_cookie
+@csrf_exempt
 @api_view(['POST'])
 def login_view(request):
     username = request.data.get('username')
@@ -162,8 +163,6 @@ def login_view(request):
 @api_view(['POST'])
 def logout_view(request):
     """使用者登出"""
-    import os
-    
     try:
         django_logout(request)
         
@@ -172,17 +171,19 @@ def logout_view(request):
             'status': 'success'
         })
         
-        # 檢測環境：有 DATABASE_URL 表示是生產環境
-        is_production = bool(os.environ.get('DATABASE_URL'))
+        response.delete_cookie(
+            'sessionid',
+            path='/',
+            domain='.onrender.com',
+            samesite='None'
+        )
         
-        if is_production:
-            # 生產環境：使用 None 讓 Django 自動處理
-            response.delete_cookie('sessionid', path='/', samesite='None')
-            response.delete_cookie('csrftoken', path='/', samesite='None')
-        else:
-            # 本地開發：使用 Lax
-            response.delete_cookie('sessionid', path='/', samesite='Lax')
-            response.delete_cookie('csrftoken', path='/', samesite='Lax')
+        response.delete_cookie(
+            'csrftoken',
+            path='/',
+            domain='.onrender.com',
+            samesite='None'
+        )
         
         response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
         response['Pragma'] = 'no-cache'
