@@ -716,3 +716,73 @@ def update_course(request, course_id):
         import traceback
         traceback.print_exc()
         return Response({'error': str(e)}, status=500)
+
+
+@api_view(['GET'])
+def my_teaching_courses(request):
+    """取得教師自己的授課列表（包含主開課和協同）"""
+    try:
+        # 1. 檢查登入
+        if not request.user.is_authenticated:
+            return Response({'error': '請先登入'}, status=401)
+            
+        print(f"查詢教師課程: {request.user.username}")
+        
+        # 2. 查詢該教師的所有開課（無論是主開課還是協同）
+        # 使用 offering_teachers__teacher 關聯查詢
+        offerings = CourseOffering.objects.filter(
+            offering_teachers__teacher=request.user
+        ).select_related(
+            'course', 'department'
+        ).prefetch_related(
+            'offering_teachers__teacher__profile',
+            'class_times'
+        ).distinct().order_by('-academic_year', '-semester', 'course__course_code')
+        
+        # 3. 整理回傳資料
+        courses_data = []
+        for offering in offerings:
+            # 取得該教師在這門課的角色
+            my_role_rel = offering.offering_teachers.filter(teacher=request.user).first()
+            my_role = my_role_rel.get_role_display() if my_role_rel else '未知'
+            
+            # 取得上課時段
+            class_times = offering.class_times.all()
+            times_display = []
+            for ct in class_times:
+                times_display.append(f"{ct.get_weekday_display()} 第{ct.start_period}-{ct.end_period}節 ({ct.classroom})")
+            
+            # 取得所有教師名稱
+            all_teachers = offering.offering_teachers.all()
+            teacher_names = []
+            for ot in all_teachers:
+                name = ot.teacher.profile.real_name if hasattr(ot.teacher, 'profile') else ot.teacher.username
+                if ot.role == 'main':
+                    teacher_names.append(f"{name}(主)")
+                else:
+                    teacher_names.append(name)
+            
+            courses_data.append({
+                'id': offering.id,
+                'course_code': offering.course.course_code,
+                'course_name': offering.course.course_name,
+                'course_type': offering.course.get_course_type_display(),
+                'credits': offering.course.credits,
+                'academic_year': offering.academic_year,
+                'semester': offering.get_semester_display(),
+                'department': offering.department.name,
+                'my_role': my_role,
+                'time_info': '；'.join(times_display) if times_display else '未設定',
+                'teacher_names': '、'.join(teacher_names),
+                'student_count': f"{offering.current_students} / {offering.max_students}",
+                'status': offering.get_status_display()
+            })
+            
+        print(f"找到 {len(courses_data)} 門授課")
+        return Response(courses_data)
+
+    except Exception as e:
+        print(f"取得授課列表失敗: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return Response({'error': str(e)}, status=500)

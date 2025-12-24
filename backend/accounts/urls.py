@@ -29,6 +29,7 @@ urlpatterns = [
     # ===== 課程收藏 API =====
     path('courses/<int:course_id>/favorite/', views_course.toggle_favorite, name='toggle_favorite'),
     path('courses/favorites/', views_course.get_favorite_courses, name='get_favorite_courses'),
+    path('courses/my-teaching/', views_course.my_teaching_courses, name='my_teaching_courses'), # 教師授課列表
     
     # ===== 學生選課 API =====
     path('courses/<int:course_id>/enroll/', views_course.enroll_course, name='enroll_course'),
@@ -42,6 +43,16 @@ urlpatterns = [
     path('teachers/<int:user_id>/update/', views_account.update_teacher, name='update_teacher'),
     path('students/<int:user_id>/delete/', views_account.delete_student, name='delete_student'),
     path('teachers/<int:user_id>/delete/', views_account.delete_teacher, name='delete_teacher'),
+    path('accounts/<int:user_id>/reset-password/', views_account.reset_password, name='reset_password'), # 重設密碼
+    
+    # 大頭貼相關
+    path('user/profile/', views_account.get_profile_info, name='get_profile_info'),
+    path('user/avatar/', views_account.get_avatar, name='get_avatar'),
+    path('user/avatar/upload/', views_account.upload_avatar, name='upload_avatar'),
+    path('user/avatar/delete/', views_account.delete_avatar, name='delete_avatar'),
+    
+    # 密碼修改
+    path('change-password/', views_auth.change_password, name='change_password'),
 
     path('debug-settings/', views_debug.debug_settings, name='debug_settings'),
     

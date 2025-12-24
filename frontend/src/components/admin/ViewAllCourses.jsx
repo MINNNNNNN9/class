@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import axios from 'axios'
 import { API_ENDPOINTS } from '../../config/api'
+import { useToast } from '../../contexts/ToastContext'
 
 export default function ViewAllCourses({ onEdit }) {
   const [courses, setCourses] = useState([])
@@ -11,6 +12,7 @@ export default function ViewAllCourses({ onEdit }) {
   const [selectedSemester, setSelectedSemester] = useState('all')
   const [loading, setLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
+  const { toast } = useToast()
 
   const departmentOptions = [
     { value: 'all', label: '所有系所' },
@@ -50,7 +52,7 @@ export default function ViewAllCourses({ onEdit }) {
     try {
       // 建立查詢參數
       const params = new URLSearchParams()
-      
+
       if (selectedAcademicYear !== 'all') {
         params.append('academic_year', selectedAcademicYear)
       }
@@ -66,19 +68,19 @@ export default function ViewAllCourses({ onEdit }) {
       if (searchTerm) {
         params.append('keyword', searchTerm)
       }
-      
+
       // 使用查詢參數去後端搜尋
       const response = await axios.get(`${API_ENDPOINTS.courses}?${params.toString()}`)
-      
+
       const coursesData = response.data.map(course => {
         // 處理多位教師顯示
         let teacherDisplay = course.teacher_name || '未設定'
-        
+
         // 如果有協同教師資訊，組合顯示
         if (course.co_teachers && course.co_teachers.length > 0) {
           teacherDisplay = `${course.teacher_name}（主）`
         }
-        
+
         return {
           ...course,
           teacher_display: teacherDisplay
@@ -88,7 +90,7 @@ export default function ViewAllCourses({ onEdit }) {
       setFilteredCourses(coursesData)
     } catch (error) {
       console.error('載入課程失敗:', error)
-      alert('載入課程失敗，請稍後再試')
+      toast.error('載入課程失敗，請稍後再試')
     } finally {
       setLoading(false)
     }
@@ -117,11 +119,11 @@ export default function ViewAllCourses({ onEdit }) {
 
     try {
       await axios.delete(API_ENDPOINTS.courseDelete(courseId))
-      alert('課程刪除成功！')
+      toast.success('課程刪除成功！')
       fetchCourses()
     } catch (error) {
       console.error('刪除課程失敗:', error)
-      alert('刪除失敗，請稍後再試')
+      toast.error('刪除失敗，請稍後再試')
     }
   }
 
@@ -257,10 +259,10 @@ export default function ViewAllCourses({ onEdit }) {
                 placeholder="搜尋課程代碼、名稱、教師..."
                 className="w-full px-4 py-2.5 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
-              <svg 
-                className="absolute left-3 top-3 w-5 h-5 text-gray-400" 
-                fill="none" 
-                stroke="currentColor" 
+              <svg
+                className="absolute left-3 top-3 w-5 h-5 text-gray-400"
+                fill="none"
+                stroke="currentColor"
                 viewBox="0 0 24 24"
               >
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -409,13 +411,13 @@ export default function ViewAllCourses({ onEdit }) {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                    <button 
+                    <button
                       className="text-blue-600 hover:text-blue-900 transition-colors"
                       onClick={() => handleEdit(course.id)}
                     >
                       修改
                     </button>
-                    <button 
+                    <button
                       className="text-red-600 hover:text-red-900 transition-colors"
                       onClick={() => handleDelete(course.id, course.course_name)}
                     >

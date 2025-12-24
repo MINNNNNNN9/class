@@ -13,3 +13,7 @@ backend/data_backup.json
 
 backend/staticfiles/*
 backend/.env
+
+frontend/src/tests/
+backend/media/
+.lens/

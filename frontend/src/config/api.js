@@ -81,27 +81,40 @@ apiClient.interceptors.response.use(
 )
 
 // ===== 5. API 端點定義 =====
-export const API_ENDPOINTS = {
+export const API_ENDPOINTS = { // 認證相關
   login: `${baseURL}/login/`,
   logout: `${baseURL}/logout/`,
   register: `${baseURL}/register/`,
+  changePassword: `${baseURL}/change-password/`,
+
+  // 課程相關
   courses: `${baseURL}/courses/`,
-  coursesSearch: `${baseURL}/courses/search/`,
-  coursesCreate: `${baseURL}/courses/create/`,
-  courseDetail: (id) => `${baseURL}/courses/${id}/detail/`,
-  courseUpdate: (id) => `${baseURL}/courses/${id}/update/`,
-  courseDelete: (id) => `${baseURL}/courses/${id}/delete/`,
-  courseEnroll: (id) => `${baseURL}/courses/${id}/enroll/`,
-  courseDrop: (id) => `${baseURL}/courses/${id}/drop/`,
-  courseFavorite: (id) => `${baseURL}/courses/${id}/favorite/`,
+  searchCourses: `${baseURL}/courses/search/`,
+  coursesCreate: `${baseURL}/courses/create/`, // 新增課程
+  addCourse: `${baseURL}/courses/create/`, // 修正：統一指向 create
+  semesterCourses: `${baseURL}/courses/semester/`,
+  myCourses: `${baseURL}/courses/my/`,
+  myTeachingCourses: `${baseURL}/courses/my-teaching/`, // 教師授課列表
+  historyCourses: `${baseURL}/courses/history/`,
+  creditSummary: `${baseURL}/user/credit-summary/`,
+  dropCourse: `${baseURL}/courses/drop/`, // 退選
+  enrollCourse: `${baseURL}/courses/enroll/`, // 加選
+
+  // 篩選選單
   filterOptions: `${baseURL}/courses/filter-options/`,
-  enrolledCourses: `${baseURL}/courses/enrolled/`,
-  favoriteCourses: `${baseURL}/courses/favorites/`,
-  teachers: `${baseURL}/teachers/`,
+
+  // 管理者相關
   students: `${baseURL}/students/`,
   studentUpdate: (id) => `${baseURL}/students/${id}/update/`,
   studentDelete: (id) => `${baseURL}/students/${id}/delete/`,
+  teachers: `${baseURL}/teachers/`,
   teacherUpdate: (id) => `${baseURL}/teachers/${id}/update/`,
   teacherDelete: (id) => `${baseURL}/teachers/${id}/delete/`,
-  creditSummary: `${baseURL}/user/credit-summary/`,
+  resetPassword: (id) => `${baseURL}/accounts/${id}/reset-password/`, // 重設密碼
+
+  // 帳號管理
+  userProfile: `${API_BASE_URL}/user/profile/`,
+  avatar: `${API_BASE_URL}/user/avatar/`,
+  avatarUpload: `${API_BASE_URL}/user/avatar/upload/`,
+  avatarDelete: `${baseURL}/user/avatar/delete/`,
 }

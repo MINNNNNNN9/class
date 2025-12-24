@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import API_BASE_URL from '../../config/api'
-import { getCsrfToken } from '../../utils/csrf'  // ← 新增這行
+import { getCsrfToken } from '../../utils/csrf'
+import { useToast } from '../../contexts/ToastContext'
 
 
 
@@ -36,6 +37,7 @@ export default function CourseSelection() {
   const [loading, setLoading] = useState(false)
   const [enrolledCourses, setEnrolledCourses] = useState([])
   const [activeTab, setActiveTab] = useState('enrolled')
+  const { toast } = useToast()
 
   // 節次選項（1-14節）
   const periodOptions = Array.from({ length: 14 }, (_, i) => ({
@@ -79,37 +81,37 @@ export default function CourseSelection() {
     setLoading(true)
     try {
       const params = new URLSearchParams()
-      
+
       // 基本參數
       if (filters.keyword) params.append('keyword', filters.keyword)
       params.append('academic_year', filters.academic_year)
       if (filters.department) params.append('department', filters.department)
       if (filters.course_type) params.append('course_type', filters.course_type)
       if (filters.grade_level) params.append('grade_level', filters.grade_level)
-      
+
       // 複選星期
       if (filters.weekdays.length > 0) {
         filters.weekdays.forEach(day => params.append('weekdays', day))
       }
-      
+
       // 複選節次
       if (filters.periods.length > 0) {
         filters.periods.forEach(period => params.append('periods', period))
       }
-      
+
       const response = await fetch(`${API_BASE_URL}/courses/search/?${params.toString()}`, {
         credentials: 'include'
       })
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
       }
-      
+
       const data = await response.json()
       setCourses(data || [])
     } catch (error) {
       console.error('查詢課程失敗:', error)
-      alert('查詢課程失敗: ' + error.message)
+      toast.error('查詢課程失敗: ' + error.message)
     } finally {
       setLoading(false)
     }
@@ -121,17 +123,17 @@ export default function CourseSelection() {
       const response = await fetch(`${API_BASE_URL}/courses/favorites/`, {
         credentials: 'include'
       })
-      
+
       if (response.ok) {
         const data = await response.json()
         setCourses(data || [])
       } else {
-        alert('請先登入以查看收藏課程')
+        // toast.warning('請先登入以查看收藏課程') // Silent fail or warning? Maybe warning.
         setCourses([])
       }
     } catch (error) {
       console.error('獲取收藏課程失敗:', error)
-      alert('獲取收藏課程失敗，請先登入')
+      // toast.error('獲取收藏課程失敗，請先登入')
       setCourses([])
     } finally {
       setLoading(false)
@@ -143,7 +145,7 @@ export default function CourseSelection() {
       const response = await fetch(`${API_BASE_URL}/courses/enrolled/?academic_year=${filters.academic_year}&semester=1`, {
         credentials: 'include'
       })
-      
+
       if (response.ok) {
         const data = await response.json()
         setEnrolledCourses(data || [])
@@ -210,10 +212,10 @@ export default function CourseSelection() {
           'X-CSRFToken': getCsrfToken(),
         }
       })
-      
+
       if (response.ok) {
         const data = await response.json()
-        alert(data.message)
+        toast.success(data.message)
         // 重新載入課程列表和已選課程
         if (filters.show_favorites) {
           fetchFavoriteCourses()
@@ -223,11 +225,11 @@ export default function CourseSelection() {
         fetchEnrolledCourses()
       } else {
         const error = await response.json()
-        alert(error.error || '加選失敗')
+        toast.error(error.error || '加選失敗')
       }
     } catch (error) {
       console.error('加選課程失敗:', error)
-      alert('加選失敗，請先登入')
+      toast.error('加選失敗，請先登入')
     }
   }
 
@@ -244,10 +246,10 @@ export default function CourseSelection() {
           'X-CSRFToken': getCsrfToken(),
         }
       })
-      
+
       if (response.ok) {
         const data = await response.json()
-        alert(data.message)
+        toast.success(data.message)
         // 重新載入課程列表和已選課程
         if (filters.show_favorites) {
           fetchFavoriteCourses()
@@ -257,11 +259,11 @@ export default function CourseSelection() {
         fetchEnrolledCourses()
       } else {
         const error = await response.json()
-        alert(error.error || '退選失敗')
+        toast.error(error.error || '退選失敗')
       }
     } catch (error) {
       console.error('退選課程失敗:', error)
-      alert('退選失敗')
+      toast.error('退選失敗')
     }
   }
 
@@ -274,23 +276,23 @@ export default function CourseSelection() {
           'X-CSRFToken': getCsrfToken(),
         }
       })
-      
+
       if (response.ok) {
         const data = await response.json()
         // 更新課程列表中的收藏狀態
-        setCourses(prev => prev.map(course => 
-          course.id === courseId 
+        setCourses(prev => prev.map(course =>
+          course.id === courseId
             ? { ...course, is_favorited: data.is_favorited }
             : course
         ))
-        alert(data.message)
+        toast.success(data.message)
       } else {
         const error = await response.json()
-        alert(error.error || '操作失敗')
+        toast.error(error.error || '操作失敗')
       }
     } catch (error) {
       console.error('收藏操作失敗:', error)
-      alert('操作失敗，請先登入')
+      toast.error('操作失敗，請先登入')
     }
   }
 
@@ -316,21 +318,19 @@ export default function CourseSelection() {
       <div className="flex mb-6 border-b border-gray-200">
         <button
           onClick={() => setActiveTab('enrolled')}
-          className={`px-6 py-3 font-semibold text-lg transition-colors ${
-            activeTab === 'enrolled'
+          className={`px-6 py-3 font-semibold text-lg transition-colors ${activeTab === 'enrolled'
               ? 'text-blue-600 border-b-2 border-blue-600'
               : 'text-gray-500 hover:text-gray-700'
-          }`}
+            }`}
         >
           已選課程
         </button>
         <button
           onClick={() => setActiveTab('search')}
-          className={`px-6 py-3 font-semibold text-lg transition-colors ${
-            activeTab === 'search'
+          className={`px-6 py-3 font-semibold text-lg transition-colors ${activeTab === 'search'
               ? 'text-blue-600 border-b-2 border-blue-600'
               : 'text-gray-500 hover:text-gray-700'
-          }`}
+            }`}
         >
           選課
         </button>
@@ -340,7 +340,7 @@ export default function CourseSelection() {
       {activeTab === 'enrolled' && (
         <div>
           <h2 className="text-2xl font-bold text-gray-800 mb-6">已選課程</h2>
-          
+
           {loading ? (
             <div className="text-center py-8">
               <p className="text-gray-500">載入中...</p>
@@ -355,7 +355,7 @@ export default function CourseSelection() {
                 const timeDisplay = course.class_times && course.class_times.length > 0
                   ? course.class_times.map(t => `${t.weekday_display} ${t.start_period}-${t.end_period}節`).join('；')
                   : '未設定'
-                
+
                 return (
                   <div
                     key={course.id}
@@ -392,7 +392,7 @@ export default function CourseSelection() {
                   </div>
                 )
               })}
-              
+
               <div className="mt-6 p-4 bg-gray-50 rounded-lg">
                 <p className="text-gray-700">
                   已選課程：<span className="font-bold text-blue-600">{enrolledCourses.length}</span> 門
@@ -410,12 +410,12 @@ export default function CourseSelection() {
       {activeTab === 'search' && (
         <div>
           <h2 className="text-2xl font-bold text-gray-800 mb-6">選課</h2>
-      
+
           {/* 篩選區域 */}
           <div className="mb-6 p-6 bg-gray-50 rounded-lg space-y-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-gray-700">篩選條件</h3>
-              
+
               {/* 收藏課程切換 */}
               <div className="flex items-center">
                 <input
@@ -430,7 +430,7 @@ export default function CourseSelection() {
                 </label>
               </div>
             </div>
-            
+
             {!filters.show_favorites && (
               <>
                 {/* 第一排：系所、課程類別 */}
@@ -490,11 +490,10 @@ export default function CourseSelection() {
                           <button
                             key={day.value}
                             onClick={() => toggleArrayFilter('weekdays', day.value)}
-                            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                              filters.weekdays.includes(day.value)
+                            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${filters.weekdays.includes(day.value)
                                 ? 'bg-blue-600 text-white'
                                 : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                            }`}
+                              }`}
                           >
                             {day.label}
                           </button>
@@ -512,11 +511,10 @@ export default function CourseSelection() {
                       <button
                         key={period.value}
                         onClick={() => toggleArrayFilter('periods', period.value)}
-                        className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                          filters.periods.includes(period.value)
+                        className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${filters.periods.includes(period.value)
                             ? 'bg-green-600 text-white'
                             : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                        }`}
+                          }`}
                       >
                         {period.label}
                       </button>
@@ -605,11 +603,11 @@ export default function CourseSelection() {
                         if (!course.teachers || course.teachers.length === 0) {
                           return '未設定'
                         }
-                        
+
                         // 找出主要教師（is_primary_teacher 為 true）
                         const primaryTeacher = course.teachers.find(t => t.is_primary_teacher)
                         const coTeachers = course.teachers.filter(t => !t.is_primary_teacher)
-                        
+
                         if (primaryTeacher && coTeachers.length > 0) {
                           return `${primaryTeacher.name} +${coTeachers.length}位協同`
                         } else if (primaryTeacher) {
@@ -621,7 +619,7 @@ export default function CourseSelection() {
                       }
 
                       const teacherNames = getTeacherDisplay()
-                      
+
                       // 改成分別計算星期和節次
                       const weekdayDisplay = course.class_times && course.class_times.length > 0
                         ? course.class_times.map(t => t.weekday_display).join('、')
@@ -630,15 +628,15 @@ export default function CourseSelection() {
                       const periodDisplay = course.class_times && course.class_times.length > 0
                         ? course.class_times.map(t => `${t.start_period}-${t.end_period}節`).join('、')
                         : '未設定'
-                      
+
                       // 取得教室
                       const classroom = course.class_times && course.class_times.length > 0
                         ? course.class_times[0].classroom
                         : '未設定'
-                      
+
                       // 檢查是否已選課
                       const isEnrolled = isCourseEnrolled(course.id)
-                      
+
                       return (
                         <tr key={course.id} className="hover:bg-gray-50">
                           <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
@@ -694,11 +692,10 @@ export default function CourseSelection() {
                               <button
                                 onClick={() => enrollCourse(course.id)}
                                 disabled={course.status === 'full' || course.status === 'closed'}
-                                className={`px-3 py-1 rounded text-xs font-semibold transition-colors ${
-                                  course.status === 'full' || course.status === 'closed'
+                                className={`px-3 py-1 rounded text-xs font-semibold transition-colors ${course.status === 'full' || course.status === 'closed'
                                     ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                                     : 'bg-blue-600 text-white hover:bg-blue-700'
-                                }`}
+                                  }`}
                               >
                                 {course.status === 'full' ? '已額滿' : course.status === 'closed' ? '已停開' : '加選'}
                               </button>
@@ -748,7 +745,7 @@ export default function CourseSelection() {
                       ×
                     </button>
                   </div>
-                  
+
                   <div className="space-y-3">
                     <div className="grid grid-cols-2 gap-4">
                       <div>
@@ -800,7 +797,7 @@ export default function CourseSelection() {
                         </span>
                       </div>
                     </div>
-                    
+
                     <div className="pt-4 border-t">
                       <h4 className="font-semibold text-gray-700 mb-2">課程描述：</h4>
                       <p className="text-gray-600 whitespace-pre-wrap">
@@ -808,7 +805,7 @@ export default function CourseSelection() {
                       </p>
                     </div>
                   </div>
-                  
+
                   <div className="mt-6 flex justify-end space-x-3">
                     {!isCourseEnrolled(selectedCourse.id) && selectedCourse.status !== 'full' && selectedCourse.status !== 'closed' && (
                       <button

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 //import axios from 'axios'
 import { API_ENDPOINTS, apiClient } from '../../config/api'
+import { useToast } from '../../contexts/ToastContext' // Import useToast
 //import { getCsrfToken } from '../../utils/csrf'  // ← 新增這行
 
 
@@ -26,6 +27,7 @@ export default function ViewAllAccounts() {
   const [loading, setLoading] = useState(false)
   const [editingAccount, setEditingAccount] = useState(null)
   const [editFormData, setEditFormData] = useState({})
+  const { toast } = useToast() // Use toast
 
   useEffect(() => {
     fetchAccounts()
@@ -39,23 +41,34 @@ export default function ViewAllAccounts() {
       const response = await apiClient.get(endpoint)
       setAccounts(response.data)
     } catch (error) {
-      alert('載入帳號失敗')
+      toast.error('載入帳號失敗')
     } finally { setLoading(false) }
   }
 
   const handleDelete = async (accountId, name) => {
     if (!confirm(`確定要刪除嗎？`)) return
     try {
-      const url = accountType === 'student' 
-        ? API_ENDPOINTS.studentDelete(accountId) 
+      const url = accountType === 'student'
+        ? API_ENDPOINTS.studentDelete(accountId)
         : API_ENDPOINTS.teacherDelete(accountId)
-      
+
       // ✅ 攔截器會自動補上 X-CSRFToken Header
       await apiClient.delete(url)
-      alert('刪除成功！')
+      toast.success('刪除成功！')
       fetchAccounts()
     } catch (error) {
-      alert(error.response?.data?.error || '刪除失敗')
+      toast.error(error.response?.data?.error || '刪除失敗')
+    }
+  }
+
+  const handleResetPassword = async (accountId, name) => {
+    if (!confirm(`確定要重設 ${name} 的密碼嗎？\n重設後密碼將還原為學號/教師編號，且用戶下次登入時須強制修改密碼。`)) return
+    try {
+      const url = API_ENDPOINTS.resetPassword(accountId)
+      const response = await apiClient.post(url)
+      toast.success(response.data.message)
+    } catch (error) {
+      toast.error(error.response?.data?.error || '重設失敗')
     }
   }
 
@@ -98,11 +111,11 @@ export default function ViewAllAccounts() {
 
       // ✅ 攔截器會自動補上 X-CSRFToken Header
       await apiClient.put(url, editFormData)
-      alert('修改成功！')
+      toast.success('修改成功！')
       setEditingAccount(null)
       fetchAccounts()
     } catch (error) {
-      alert(error.response?.data?.error || '修改失敗')
+      toast.error(error.response?.data?.error || '修改失敗')
     }
   }
 
@@ -131,7 +144,7 @@ export default function ViewAllAccounts() {
       {/* 標題和身份選擇 */}
       <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
         <h2 className="text-2xl font-bold text-gray-800 mb-4">查看所有帳號</h2>
-        
+
         <div className="flex items-center gap-2 mb-4">
           <span className="text-sm font-medium text-gray-700">選擇身份：</span>
           <label className="flex items-center cursor-pointer">
@@ -196,7 +209,7 @@ export default function ViewAllAccounts() {
                 ) : (
                   <>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">姓名</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">帳號</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">教師編號</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">職稱</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">研究室</th>
                   </>
@@ -284,7 +297,7 @@ export default function ViewAllAccounts() {
                         )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">{account.username}</div>
+                        <div className="text-sm text-gray-900">{account.teacher_id || account.username}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         {editingAccount === account.id ? (
@@ -320,13 +333,13 @@ export default function ViewAllAccounts() {
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                     {editingAccount === account.id ? (
                       <>
-                        <button 
+                        <button
                           className="text-green-600 hover:text-green-900"
                           onClick={() => handleEditSave(account.id)}
                         >
                           儲存
                         </button>
-                        <button 
+                        <button
                           className="text-gray-600 hover:text-gray-900"
                           onClick={handleEditCancel}
                         >
@@ -335,13 +348,19 @@ export default function ViewAllAccounts() {
                       </>
                     ) : (
                       <>
-                        <button 
+                        <button
                           className="text-blue-600 hover:text-blue-900"
                           onClick={() => handleEditClick(account)}
                         >
                           修改
                         </button>
-                        <button 
+                        <button
+                          className="text-yellow-600 hover:text-yellow-900"
+                          onClick={() => handleResetPassword(account.id, account.real_name)}
+                        >
+                          重設密碼
+                        </button>
+                        <button
                           className="text-red-600 hover:text-red-900"
                           onClick={() => handleDelete(account.id, account.real_name)}
                         >

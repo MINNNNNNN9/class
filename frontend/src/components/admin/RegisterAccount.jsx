@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import axios from 'axios'
+import * as XLSX from 'xlsx'
 import { API_ENDPOINTS } from '../../config/api'
+import { useToast } from '../../contexts/ToastContext'
 
 
 export default function RegisterAccount() {
   const [formData, setFormData] = useState({
-    username: '',
     password: '',
     confirmPassword: '',
     real_name: '',
@@ -15,12 +16,134 @@ export default function RegisterAccount() {
     department: '',
     grade: '1',
     // 教師專用欄位
+    teacher_id: '',
     office: '',
     title: ''
   })
 
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [importLoading, setImportLoading] = useState(false)
+  const [importResults, setImportResults] = useState(null)
+  const { toast } = useToast()
+
+  // Excel 匯入邏輯
+  const handleFileImport = async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+
+    setImportLoading(true)
+    setImportResults(null)
+
+    try {
+      const data = await file.arrayBuffer()
+      const workbook = XLSX.read(data)
+      const worksheet = workbook.Sheets[workbook.SheetNames[0]]
+      const rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: null })
+
+      // 偵測標題行
+      let headerRow = rawData[0]
+      let dataStartRow = 1
+
+      // 簡單的標題偵測
+      if (!headerRow || !headerRow.some(cell => String(cell).includes('姓名') || String(cell).includes('Name'))) {
+        for (let i = 0; i < Math.min(10, rawData.length); i++) {
+          if (rawData[i] && rawData[i].some(cell => String(cell).includes('姓名') || String(cell).includes('Name'))) {
+            headerRow = rawData[i]
+            dataStartRow = i + 1
+            break
+          }
+        }
+      }
+
+      console.log('標題行:', headerRow)
+
+      const results = {
+        total: 0,
+        success: 0,
+        failed: 0,
+        errors: []
+      }
+
+      const rows = rawData.slice(dataStartRow)
+      results.total = rows.length
+
+      // 欄位映射助手
+      const findCol = (keywords) => headerRow ? headerRow.findIndex(cell =>
+        keywords.some(k => String(cell || '').toLowerCase().includes(k.toLowerCase()))
+      ) : -1
+
+      const colName = findCol(['姓名', 'Real Name', 'Name'])
+      const colStudentId = findCol(['學號', 'Student ID'])
+      const colTeacherId = findCol(['教師編號', 'Teacher ID', 'ID'])
+      const colDept = findCol(['系所', 'Department'])
+      const colGrade = findCol(['年級', 'Grade'])
+      const colOffice = findCol(['研究室', 'Office'])
+      const colTitle = findCol(['職稱', 'Title'])
+      const colRole = findCol(['身份', 'Role', 'Type', '職別'])
+      const colPass = findCol(['密碼', 'Password'])
+
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i]
+        if (!row || row.length === 0 || !row[colName]) continue
+
+        try {
+          const real_name = String(row[colName]).trim()
+          let role = 'student' // 預設
+
+          // 判斷角色
+          if (colRole !== -1 && row[colRole]) {
+            const roleVal = String(row[colRole]).toLowerCase()
+            if (roleVal.includes('教') || roleVal.includes('teacher')) role = 'teacher'
+          } else if (colTeacherId !== -1 && row[colTeacherId]) {
+            role = 'teacher'
+          }
+
+          // 準備資料
+          const submitData = {
+            real_name: real_name,
+            role: role,
+            password: (colPass !== -1 && row[colPass]) ? String(row[colPass]) : (role === 'student' ? String(row[colStudentId]) : '123456'),
+          }
+
+          if (role === 'student') {
+            submitData.student_id = (colStudentId !== -1 && row[colStudentId]) ? String(row[colStudentId]).trim() : ''
+            submitData.department = (colDept !== -1 && row[colDept]) ? String(row[colDept]).trim() : '資管系'
+            submitData.grade = (colGrade !== -1 && row[colGrade]) ? parseInt(row[colGrade]) : 1
+            if (!submitData.student_id) throw new Error('缺少學號')
+          } else {
+            submitData.teacher_id = (colTeacherId !== -1 && row[colTeacherId]) ? String(row[colTeacherId]).trim() : ((colStudentId !== -1 && row[colStudentId]) ? String(row[colStudentId]).trim() : '')
+            submitData.office = (colOffice !== -1 && row[colOffice]) ? String(row[colOffice]).trim() : '未設定'
+            submitData.title = (colTitle !== -1 && row[colTitle]) ? String(row[colTitle]).trim() : '講師'
+            if (!submitData.teacher_id) throw new Error('缺少教師編號')
+          }
+
+          await axios.post(API_ENDPOINTS.register, submitData)
+          results.success++
+
+        } catch (error) {
+          console.error(`Row ${i + 1} error:`, error)
+          results.failed++
+          const msg = error.response?.data?.error || error.message
+          results.errors.push(`第 ${i + 1} 筆 (${row[colName] || '未知'}): ${msg}`)
+        }
+      }
+
+      setImportResults(results)
+      if (results.success > 0) {
+        toast.success(`匯入完成！成功: ${results.success}, 失敗: ${results.failed}`)
+      } else {
+        toast.error(`匯入失敗，請檢查錯誤訊息`)
+      }
+
+    } catch (err) {
+      console.error('File parsing error:', err)
+      toast.error('檔案讀取失敗: ' + err.message)
+    } finally {
+      setImportLoading(false)
+      e.target.value = ''
+    }
+  }
 
   const departmentOptions = [
     { value: '資管系', label: '資訊管理系' },
@@ -55,48 +178,50 @@ export default function RegisterAccount() {
       ...prev,
       role: newRole,
       // 清空對方的專用欄位
-      ...(newRole === 'student' ? { office: '', title: '' } : { student_id: '', department: '', grade: '1' })
+      ...(newRole === 'student'
+        ? { teacher_id: '', office: '', title: '' }
+        : { student_id: '', department: '', grade: '1' })
     }))
   }
 
   const validateForm = () => {
-    if (!formData.username.trim()) {
-      alert('請輸入帳號')
-      return false
-    }
     if (!formData.password) {
-      alert('請輸入密碼')
+      toast.error('請輸入密碼')
       return false
     }
     if (formData.password !== formData.confirmPassword) {
-      alert('兩次密碼輸入不一致')
+      toast.error('兩次密碼輸入不一致')
       return false
     }
     if (!formData.real_name.trim()) {
-      alert('請輸入真實姓名')
+      toast.error('請輸入真實姓名')
       return false
     }
 
     // 學生必填檢查
     if (formData.role === 'student') {
       if (!formData.student_id.trim()) {
-        alert('請輸入學號')
+        toast.error('請輸入學號')
         return false
       }
       if (!formData.department) {
-        alert('請選擇系所')
+        toast.error('請選擇系所')
         return false
       }
     }
 
     // 教師必填檢查
     if (formData.role === 'teacher') {
+      if (!formData.teacher_id.trim()) {
+        toast.error('請輸入教師編號')
+        return false
+      }
       if (!formData.office.trim()) {
-        alert('請輸入研究室')
+        toast.error('請輸入研究室')
         return false
       }
       if (!formData.title) {
-        alert('請選擇職稱')
+        toast.error('請選擇職稱')
         return false
       }
     }
@@ -106,14 +231,13 @@ export default function RegisterAccount() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    
+
     if (!validateForm()) return
 
     setLoading(true)
-    
+
     try {
       const submitData = {
-        username: formData.username,
         password: formData.password,
         real_name: formData.real_name,
         role: formData.role
@@ -125,17 +249,17 @@ export default function RegisterAccount() {
         submitData.department = formData.department
         submitData.grade = parseInt(formData.grade)
       } else if (formData.role === 'teacher') {
+        submitData.teacher_id = formData.teacher_id
         submitData.office = formData.office
         submitData.title = formData.title
       }
 
       await axios.post(API_ENDPOINTS.register, submitData)
-      
-      alert(`${formData.role === 'student' ? '學生' : '教師'}帳號建立成功！`)
-      
+
+      toast.success(`${formData.role === 'student' ? '學生' : '教師'}帳號建立成功！`)
+
       // 清空表單
       setFormData({
-        username: '',
         password: '',
         confirmPassword: '',
         real_name: '',
@@ -143,15 +267,16 @@ export default function RegisterAccount() {
         student_id: '',
         department: '',
         grade: '1',
+        teacher_id: '',
         office: '',
         title: ''
       })
     } catch (err) {
       console.error('註冊錯誤:', err)
       if (err.response?.data?.error) {
-        alert(`註冊失敗：${err.response.data.error}`)
+        toast.error(`註冊失敗：${err.response.data.error}`)
       } else {
-        alert('註冊失敗，請稍後再試')
+        toast.error('註冊失敗，請稍後再試')
       }
     } finally {
       setLoading(false)
@@ -160,7 +285,6 @@ export default function RegisterAccount() {
 
   const handleReset = () => {
     setFormData({
-      username: '',
       password: '',
       confirmPassword: '',
       real_name: '',
@@ -168,6 +292,7 @@ export default function RegisterAccount() {
       student_id: '',
       department: '',
       grade: '1',
+      teacher_id: '',
       office: '',
       title: ''
     })
@@ -177,7 +302,103 @@ export default function RegisterAccount() {
     <div className="max-w-3xl mx-auto px-6 py-8">
       <div className="bg-white rounded-lg shadow-md p-8">
         <h2 className="text-2xl font-bold text-gray-800 mb-6 border-b pb-3">新增帳號</h2>
-        
+
+        {/* Excel 匯入區域 */}
+        <div className="mb-8 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border-2 border-dashed border-blue-300">
+          <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
+            <svg className="w-6 h-6 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+            </svg>
+            批次匯入帳號（Excel）
+          </h3>
+
+          <div
+            className={`mb-4 p-8 border-2 border-dashed rounded-xl transition-all text-center cursor-pointer
+              ${importLoading ? 'bg-gray-100 border-gray-300 cursor-not-allowed' : 'hover:bg-blue-50 hover:border-blue-400'}
+              ${'border-blue-300 bg-blue-50/50'}
+            `}
+            onDragOver={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              e.currentTarget.classList.add('border-blue-500', 'bg-blue-100')
+            }}
+            onDragLeave={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              e.currentTarget.classList.remove('border-blue-500', 'bg-blue-100')
+            }}
+            onDrop={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              e.currentTarget.classList.remove('border-blue-500', 'bg-blue-100')
+
+              if (importLoading) return
+
+              const files = e.dataTransfer.files
+              if (files && files.length > 0) {
+                const file = files[0]
+                handleFileImport({ target: { files: [file] } })
+              }
+            }}
+            onClick={() => !importLoading && document.getElementById('account-excel-upload').click()}
+          >
+            <div className="flex flex-col items-center justify-center space-y-3">
+              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center">
+                <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+              </div>
+
+              <div className="text-gray-700">
+                <span className="font-bold text-lg">拖曳 Excel 至此</span>
+                <span className="mx-2 text-gray-400">|</span>
+                <span className="text-blue-600 hover:text-blue-700 font-medium">點擊選擇檔案</span>
+              </div>
+
+              <p className="text-sm text-gray-500">
+                支援格式：姓名, 學號/教師編號, 系所, 年級/職稱
+              </p>
+            </div>
+
+            <input
+              id="account-excel-upload"
+              type="file"
+              accept=".xlsx,.xls"
+              onChange={handleFileImport}
+              disabled={importLoading}
+              className="hidden"
+            />
+          </div>
+
+          {importLoading && (
+            <div className="text-center text-blue-600 font-medium mb-4 animate-pulse">
+              正在建立帳號中，請稍候...
+            </div>
+          )}
+
+          {importResults && (
+            <div className="mt-6">
+              <div className={`p-4 rounded-lg ${importResults.failed === 0 ? 'bg-green-100 border-green-300' : 'bg-red-100 border-red-300'} border-2`}>
+                <h4 className="font-bold mb-2">匯入結果：</h4>
+                <p>總共：{importResults.total} 筆</p>
+                <p className="text-green-700">成功：{importResults.success} 筆</p>
+                <p className="text-red-700">失敗：{importResults.failed} 筆</p>
+              </div>
+
+              {importResults.errors.length > 0 && (
+                <div className="mt-4 p-4 bg-red-50 border-2 border-red-200 rounded-lg">
+                  <h4 className="font-bold text-red-800 mb-2">錯誤訊息：</h4>
+                  <ul className="list-disc list-inside text-sm text-red-700 space-y-1 max-h-60 overflow-y-auto">
+                    {importResults.errors.map((error, index) => (
+                      <li key={index}>{error}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         <form onSubmit={handleSubmit}>
           {/* 身份選擇 */}
           <div className="mb-6 bg-blue-50 p-4 rounded-lg">
@@ -213,20 +434,8 @@ export default function RegisterAccount() {
           {/* 基本資料 */}
           <div className="space-y-4 mb-6">
             <h3 className="text-lg font-bold text-gray-700 border-b pb-2">基本資料</h3>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                帳號 <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                name="username"
-                value={formData.username}
-                onChange={handleChange}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="請輸入登入帳號"
-              />
-            </div>
+
+            {/* 帳號欄位已移除，改由學號/教師編號自動設定 */}
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -284,10 +493,10 @@ export default function RegisterAccount() {
           {formData.role === 'student' && (
             <div className="space-y-4 mb-6 bg-green-50 p-4 rounded-lg">
               <h3 className="text-lg font-bold text-gray-700 border-b pb-2">學生資料</h3>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  學號 <span className="text-red-500">*</span>
+                  學號 (將作為登入帳號) <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
@@ -342,7 +551,21 @@ export default function RegisterAccount() {
           {formData.role === 'teacher' && (
             <div className="space-y-4 mb-6 bg-purple-50 p-4 rounded-lg">
               <h3 className="text-lg font-bold text-gray-700 border-b pb-2">教師資料</h3>
-              
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  教師編號 (將作為登入帳號) <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  name="teacher_id"
+                  value={formData.teacher_id}
+                  onChange={handleChange}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  placeholder="例如：T001"
+                />
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   研究室 <span className="text-red-500">*</span>

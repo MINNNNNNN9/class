@@ -29,6 +29,7 @@ class Profile(models.Model):
     real_name = models.CharField(max_length=50, verbose_name="姓名")
     email = models.EmailField(blank=True, null=True, verbose_name="電子郵件")
     phone = models.CharField(max_length=20, blank=True, null=True, verbose_name="電話")
+    avatar = models.ImageField(upload_to='avatars/', blank=True, null=True, verbose_name="大頭貼")
     
     # 學生專用資料
     student_id = models.CharField(max_length=20, blank=True, null=True, unique=True, verbose_name="學號")
@@ -36,8 +37,11 @@ class Profile(models.Model):
     grade = models.IntegerField(blank=True, null=True, verbose_name="年級")
     
     # 教師專用資料
+    teacher_id = models.CharField(max_length=20, blank=True, null=True, unique=True, verbose_name="教師編號")
     office = models.CharField(max_length=100, blank=True, null=True, verbose_name="研究室")
     title = models.CharField(max_length=50, blank=True, null=True, verbose_name="職稱")
+    
+    force_password_change = models.BooleanField(default=True, verbose_name="需強制修改密碼")
     
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="建立時間")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新時間")

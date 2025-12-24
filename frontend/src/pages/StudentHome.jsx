@@ -1,58 +1,59 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import axios from 'axios' // ⬅️ 加上這行
+import axios from 'axios'
 import MyCourses from '../components/student/MyCourses'
 import SearchCourses from '../components/student/SearchCourses'
 import CourseSelection from '../components/student/CourseSelection'
 import AccountManagement from '../components/student/AccountManagement'
 import { API_ENDPOINTS } from '../config/api'
+import { useLanguage } from '../contexts/LanguageContext'
+import { useToast } from '../contexts/ToastContext'
+import LanguageSwitch from '../components/LanguageSwitch'
+import ThemeSwitch from '../components/ThemeSwitch'
+
+// 從 cookie 取得 CSRF token
+function getCookie(name) {
+  const value = `; ${document.cookie}`
+  const parts = value.split(`; ${name}=`)
+  if (parts.length === 2) return parts.pop().split(';').shift()
+}
 
 export default function StudentHome() {
   const [activeTab, setActiveTab] = useState('myCourses')
   const navigate = useNavigate()
-  
-  // 這裡可以從 localStorage 或 context 獲取使用者資訊
-  // 之後需要從後端 API 取得真實姓名
-  const username = localStorage.getItem('username') || '學生'
-  const realName = localStorage.getItem('realName') || username  // 真實姓名
+  const { t } = useLanguage()
+  const { toast } = useToast()
+
+  const username = localStorage.getItem('username') || 'Student'
+  const realName = localStorage.getItem('realName') || username
 
   const handleLogout = async () => {
     try {
-      // 從 cookie 取得 CSRF token
-      const getCookie = (name) => {
-        const value = `; ${document.cookie}`
-        const parts = value.split(`; ${name}=`)
-        if (parts.length === 2) return parts.pop().split(';').shift()
-      }
-      
       const csrfToken = getCookie('csrftoken')
-      
-      // 先呼叫後端登出 API
+
       await axios.post(API_ENDPOINTS.logout, {}, {
         withCredentials: true,
         headers: csrfToken ? {
           'X-CSRFToken': csrfToken
         } : {}
       })
+      toast.success(t('common.logout') + ' ' + t('common.success').toLowerCase())
     } catch (error) {
       console.error('登出 API 失敗:', error)
-      // 即使 API 失敗也繼續登出流程
     }
-    
-    // 清除 localStorage
+
     localStorage.removeItem('username')
     localStorage.removeItem('token')
     localStorage.removeItem('realName')
-    
-    // 跳轉回登入頁面
+
     navigate('/')
   }
 
   const navItems = [
-    { id: 'myCourses', label: '我的課表' },
-    { id: 'searchCourses', label: '查詢課程' },
-    { id: 'courseSelection', label: '預選課系統' },
-    { id: 'accountManagement', label: '個人帳號管理' }
+    { id: 'myCourses', label: t('nav.myCourses') },
+    { id: 'searchCourses', label: t('nav.searchCourses') },
+    { id: 'courseSelection', label: t('nav.courseSelection') },
+    { id: 'accountManagement', label: t('nav.accountManagement') }
   ]
 
   const renderContent = () => {
@@ -71,47 +72,48 @@ export default function StudentHome() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
       {/* Header with Logo */}
-      <div className="bg-white shadow-sm py-4 px-6">
+      <div className="bg-white dark:bg-gray-800 shadow-sm py-4 px-6 border-b dark:border-gray-700">
         <div className="flex items-center justify-between mb">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center">
+            <div className="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center shadow-lg">
               <span className="text-white font-bold text-xl">北</span>
             </div>
             <div>
-              <h1 className="text-lg font-bold text-gray-800">國立臺北護理健康大學</h1>
-              <p className="text-xs text-gray-600">National Taipei University of Nursing and Health Sciences</p>
+              <h1 className="text-lg font-bold text-gray-800 dark:text-gray-100">國立臺北護理健康大學</h1>
+              <p className="text-xs text-gray-600 dark:text-gray-400">National Taipei University of Nursing and Health Sciences</p>
             </div>
           </div>
-          
-          {/* Welcome message and Logout button */}
+
+          {/* Welcome message and controls */}
           <div className="flex items-center gap-4">
-            <span className="text-gray-700 font-medium">
-              歡迎，<span className="text-blue-600 font-bold">{realName}</span>
+            <ThemeSwitch />
+            <LanguageSwitch />
+            <span className="text-gray-700 dark:text-gray-300 font-medium hidden md:inline">
+              {t('nav.welcome')}，<span className="text-blue-600 dark:text-blue-400 font-bold">{realName}</span>
             </span>
             <button
               onClick={handleLogout}
-              className="bg-red-500 hover:bg-red-600 text-white px-6 py-2 rounded-lg font-medium transition-colors shadow-md hover:shadow-lg"
+              className="bg-red-500 hover:bg-red-600 text-white px-4 md:px-6 py-2 rounded-lg font-medium transition-colors shadow-md hover:shadow-lg text-sm md:text-base"
             >
-              登出
+              {t('common.logout')}
             </button>
           </div>
         </div>
       </div>
 
-      {/* Navigation Bar */}
-      <nav className="bg-orange-300 shadow-md mb-6">
-        <div className="flex">
+      {/* Navigation Bar - Scrollable on mobile */}
+      <nav className="bg-orange-300 dark:bg-orange-900 shadow-md mb-6 sticky top-0 z-10 transition-colors">
+        <div className="flex overflow-x-auto no-scrollbar">
           {navItems.map((item) => (
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id)}
-              className={`flex-1 py-4 px-6 text-center font-bold text-lg transition-colors ${
-                activeTab === item.id
-                  ? 'bg-orange-400 text-gray-900'
-                  : 'bg-orange-300 text-gray-800 hover:bg-orange-200'
-              }`}
+              className={`flex-1 py-4 px-4 md:px-6 text-center font-bold text-base md:text-lg transition-colors whitespace-nowrap min-w-[100px] ${activeTab === item.id
+                  ? 'bg-orange-400 dark:bg-orange-800 text-gray-900 dark:text-white'
+                  : 'bg-orange-300 dark:bg-orange-900 text-gray-800 dark:text-gray-200 hover:bg-orange-200 dark:hover:bg-orange-800'
+                }`}
             >
               {item.label}
             </button>
@@ -119,8 +121,8 @@ export default function StudentHome() {
         </div>
       </nav>
 
-      {/* Main Content Area - 移除 padding 讓內容貼合 */}
-      <main>
+      {/* Main Content Area */}
+      <main className="dark:text-gray-200">
         {renderContent()}
       </main>
     </div>

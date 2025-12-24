@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import API_BASE_URL from '../../config/api'
-import { getCsrfToken } from '../../utils/csrf'  // ← 新增這行
+import { getCsrfToken } from '../../utils/csrf'
+import { useToast } from '../../contexts/ToastContext'
 
 
 
@@ -34,6 +35,7 @@ export default function SearchCourses() {
   })
   const [selectedCourse, setSelectedCourse] = useState(null)
   const [loading, setLoading] = useState(false)
+  const { toast } = useToast()
 
   // 節次選項（1-14節）
   const periodOptions = Array.from({ length: 14 }, (_, i) => ({
@@ -70,7 +72,7 @@ export default function SearchCourses() {
     setLoading(true)
     try {
       const params = new URLSearchParams()
-      
+
       // 處理一般參數
       if (filters.keyword) params.append('keyword', filters.keyword)
       if (filters.academic_year) params.append('academic_year', filters.academic_year)
@@ -78,17 +80,17 @@ export default function SearchCourses() {
       if (filters.department) params.append('department', filters.department)
       if (filters.course_type) params.append('course_type', filters.course_type)
       if (filters.grade_level) params.append('grade_level', filters.grade_level)
-      
+
       // 處理複選星期
       if (filters.weekdays.length > 0) {
         filters.weekdays.forEach(day => params.append('weekdays', day))
       }
-      
+
       // 處理複選節次
       if (filters.periods.length > 0) {
         filters.periods.forEach(period => params.append('periods', period))
       }
-      
+
       const response = await fetch(`${API_BASE_URL}/courses/search/?${params.toString()}`, {
         credentials: 'include'  // ← 添加這一行
       })
@@ -99,7 +101,7 @@ export default function SearchCourses() {
       setCourses(data || [])
     } catch (error) {
       console.error('查詢課程失敗:', error)
-      alert('查詢課程失敗: ' + error.message)
+      toast.error('查詢課程失敗: ' + error.message)
     } finally {
       setLoading(false)
     }
@@ -157,22 +159,22 @@ export default function SearchCourses() {
           'X-CSRFToken': getCsrfToken(),  // ← 改用 getCsrfToken()
         }
       })
-      
+
       if (response.ok) {
         const data = await response.json()
-        setCourses(prev => prev.map(course => 
-          course.id === courseId 
+        setCourses(prev => prev.map(course =>
+          course.id === courseId
             ? { ...course, is_favorited: data.is_favorited }
             : course
         ))
-        alert(data.message)
+        toast.success(data.message)
       } else {
         const error = await response.json()
-        alert(error.error || '操作失敗')
+        toast.error(error.error || '操作失敗')
       }
     } catch (error) {
       console.error('收藏操作失敗:', error)
-      alert('操作失敗，請先登入')
+      toast.error('操作失敗，請先登入')
     }
   }
 
@@ -190,11 +192,11 @@ export default function SearchCourses() {
   return (
     <div className="bg-white rounded-lg shadow-md p-6">
       <h2 className="text-2xl font-bold text-gray-800 mb-6">查詢課程</h2>
-      
+
       {/* 篩選區域 */}
       <div className="mb-6 p-6 bg-gray-50 rounded-lg space-y-6">
         <h3 className="text-lg font-semibold text-gray-700 border-b pb-2">篩選條件</h3>
-        
+
         {/* 第一排：基本篩選 */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {/* 學年度 */}
@@ -280,11 +282,10 @@ export default function SearchCourses() {
                 <button
                   key={day.value}
                   onClick={() => toggleArrayFilter('weekdays', day.value)}
-                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                    filters.weekdays.includes(day.value)
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                  }`}
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${filters.weekdays.includes(day.value)
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                    }`}
                 >
                   {day.label}
                 </button>
@@ -306,11 +307,10 @@ export default function SearchCourses() {
               <button
                 key={period.value}
                 onClick={() => toggleArrayFilter('periods', period.value)}
-                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                  filters.periods.includes(period.value)
-                    ? 'bg-green-600 text-white'
-                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                }`}
+                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${filters.periods.includes(period.value)
+                  ? 'bg-green-600 text-white'
+                  : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                  }`}
               >
                 {period.label}
               </button>
@@ -405,10 +405,10 @@ export default function SearchCourses() {
                     if (!course.teachers || course.teachers.length === 0) {
                       return '未設定'
                     }
-                    
+
                     const primaryTeacher = course.teachers.find(t => t.is_primary_teacher)
                     const coTeachers = course.teachers.filter(t => !t.is_primary_teacher)
-                    
+
                     if (primaryTeacher && coTeachers.length > 0) {
                       return `${primaryTeacher.name} +${coTeachers.length}位協同`
                     } else if (primaryTeacher) {
@@ -419,7 +419,7 @@ export default function SearchCourses() {
                   }
 
                   const teacherNames = getTeacherDisplay()
-                  
+
                   const weekdayDisplay = course.class_times && course.class_times.length > 0
                     ? course.class_times.map(t => t.weekday_display).join('、')
                     : '未設定'
@@ -427,11 +427,11 @@ export default function SearchCourses() {
                   const periodDisplay = course.class_times && course.class_times.length > 0
                     ? course.class_times.map(t => `${t.start_period}-${t.end_period}節`).join('、')
                     : '未設定'
-                  
+
                   const classroom = course.class_times && course.class_times.length > 0
                     ? course.class_times[0].classroom
                     : '未設定'
-                  
+
                   return (
                     <tr key={course.id} className="hover:bg-gray-50">
                       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
@@ -521,7 +521,7 @@ export default function SearchCourses() {
                   ×
                 </button>
               </div>
-              
+
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -573,7 +573,7 @@ export default function SearchCourses() {
                     </span>
                   </div>
                 </div>
-                
+
                 <div className="pt-4 border-t">
                   <h4 className="font-semibold text-gray-700 mb-2">課程描述：</h4>
                   <p className="text-gray-600 whitespace-pre-wrap">
@@ -581,7 +581,7 @@ export default function SearchCourses() {
                   </p>
                 </div>
               </div>
-              
+
               <div className="mt-6 flex justify-end">
                 <button
                   onClick={() => setSelectedCourse(null)}

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import axios from 'axios'
 import * as XLSX from 'xlsx'
 import API_BASE_URL, { API_ENDPOINTS } from '../../config/api'
+import { useToast } from '../../contexts/ToastContext'
 
 export default function CreateCourse({ editingCourseId, onSaveComplete }) {
   const [formData, setFormData] = useState({
@@ -32,6 +33,7 @@ export default function CreateCourse({ editingCourseId, onSaveComplete }) {
   const [importResults, setImportResults] = useState(null)
   const [importDepartment, setImportDepartment] = useState('資管系')
   const [isEditMode, setIsEditMode] = useState(false)
+  const { toast } = useToast()
 
   // 載入教師列表
   useEffect(() => {
@@ -57,7 +59,7 @@ export default function CreateCourse({ editingCourseId, onSaveComplete }) {
       console.log('載入課程資料成功:', response.data)
     } catch (error) {
       console.error('載入課程資料失敗:', error)
-      alert('載入課程資料失敗，請稍後再試')
+      toast.error('載入課程資料失敗，請稍後再試')
     } finally {
       setLoading(false)
     }
@@ -150,33 +152,33 @@ export default function CreateCourse({ editingCourseId, onSaveComplete }) {
 
   const validateForm = () => {
     if (!formData.course_code.trim()) {
-      alert('請輸入課程代碼')
+      toast.error('請輸入課程代碼')
       return false
     }
     if (!formData.course_name.trim()) {
-      alert('請輸入課程名稱')
+      toast.error('請輸入課程名稱')
       return false
     }
     // 修改教師驗證邏輯
     if (!formData.use_new_teacher && !formData.teacher_id) {
-      alert('請選擇主開課教師')
+      toast.error('請選擇主開課教師')
       return false
     }
     if (formData.use_new_teacher && !formData.teacher_name.trim()) {
-      alert('請輸入新教師姓名')
+      toast.error('請輸入新教師姓名')
       return false
     }
     if (!formData.classroom.trim()) {
-      alert('請輸入教室')
+      toast.error('請輸入教室')
       return false
     }
     if (parseInt(formData.start_period) > parseInt(formData.end_period)) {
-      alert('開始節次不能大於結束節次')
+      toast.error('開始節次不能大於結束節次')
       return false
     }
     // 檢查主開課教師不能同時是協同教師（只在使用現有教師時檢查）
     if (!formData.use_new_teacher && formData.co_teachers && formData.co_teachers.includes(parseInt(formData.teacher_id))) {
-      alert('主開課教師不能同時是協同教師')
+      toast.error('主開課教師不能同時是協同教師')
       return false
     }
     return true
@@ -184,11 +186,11 @@ export default function CreateCourse({ editingCourseId, onSaveComplete }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    
+
     if (!validateForm()) return
 
     setLoading(true)
-    
+
     try {
       const submitData = {
         ...formData,
@@ -206,13 +208,13 @@ export default function CreateCourse({ editingCourseId, onSaveComplete }) {
       if (isEditMode && editingCourseId) {
         // 更新模式
         await axios.put(API_ENDPOINTS.courseUpdate(editingCourseId), submitData)
-        alert('課程更新成功!')
+        toast.success('課程更新成功!')
       } else {
         // 新增模式
         await axios.post(API_ENDPOINTS.coursesCreate, submitData)
-        alert('課程建立成功!')
+        toast.success('課程建立成功!')
       }
-      
+
       // 呼叫完成回調
       if (onSaveComplete) {
         onSaveComplete()
@@ -222,9 +224,9 @@ export default function CreateCourse({ editingCourseId, onSaveComplete }) {
     } catch (err) {
       console.error('儲存課程錯誤:', err)
       if (err.response?.data?.error) {
-        alert(`${isEditMode ? '更新' : '建立'}失敗：${err.response.data.error}`)
+        toast.error(`${isEditMode ? '更新' : '建立'}失敗：${err.response.data.error}`)
       } else {
-        alert(`${isEditMode ? '更新' : '建立'}失敗，請稍後再試`)
+        toast.error(`${isEditMode ? '更新' : '建立'}失敗，請稍後再試`)
       }
     } finally {
       setLoading(false)
@@ -275,7 +277,7 @@ export default function CreateCourse({ editingCourseId, onSaveComplete }) {
   // 課別名稱對應到課程類型
   const mapCourseType = (courseCategoryName) => {
     const name = String(courseCategoryName).trim()
-    
+
     if (name.includes('通識必修')) {
       return 'general_required'
     }
@@ -291,7 +293,7 @@ export default function CreateCourse({ editingCourseId, onSaveComplete }) {
     if (name.includes('通識')) {
       return 'general_elective'
     }
-    
+
     return 'elective'
   }
 
@@ -312,35 +314,35 @@ export default function CreateCourse({ editingCourseId, onSaveComplete }) {
   // 解析節次
   const parsePeriods = (periodText) => {
     if (!periodText) return { start: 1, end: 1 }
-    
+
     const text = String(periodText).trim()
-    
+
     if (text.includes(',')) {
       const periods = text.split(',').map(p => parseInt(p.trim())).filter(p => !isNaN(p))
       if (periods.length > 0) {
         return { start: Math.min(...periods), end: Math.max(...periods) }
       }
     }
-    
+
     if (text.includes('-')) {
       const periods = text.split('-').map(p => parseInt(p.trim())).filter(p => !isNaN(p))
       if (periods.length === 2) {
         return { start: periods[0], end: periods[1] }
       }
     }
-    
+
     const period = parseInt(text)
     if (!isNaN(period)) {
       return { start: period, end: period }
     }
-    
+
     return { start: 1, end: 1 }
   }
 
   // 解析教師名稱（支援頓號分隔）
   const parseTeachers = (teacherText) => {
     if (!teacherText) return []
-    
+
     // 使用頓號、逗號或分號分割
     const names = teacherText.split(/[、,;]/).map(n => n.trim()).filter(n => n)
     return names
@@ -358,25 +360,25 @@ export default function CreateCourse({ editingCourseId, onSaveComplete }) {
       const data = await file.arrayBuffer()
       const workbook = XLSX.read(data)
       const worksheet = workbook.Sheets[workbook.SheetNames[0]]
-      
+
       const rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: null })
-      
+
       console.log('原始資料:', rawData)
       console.log('總列數:', rawData.length)
-      
+
       // 判斷檔案格式
       let dataStartRow = 0
       let hasOpeningDeptColumn = false
-      
+
       // 找到第一行非空的資料（標題行）
       let headerRow = null
       let headerRowIndex = -1
-      
+
       for (let i = 0; i < Math.min(10, rawData.length); i++) {
         const row = rawData[i]
-        if (row && row.some(cell => 
-          String(cell).includes('學期') || 
-          String(cell).includes('科目中文名稱') || 
+        if (row && row.some(cell =>
+          String(cell).includes('學期') ||
+          String(cell).includes('科目中文名稱') ||
           String(cell).includes('授課教師姓名')
         )) {
           headerRow = row
@@ -385,10 +387,10 @@ export default function CreateCourse({ editingCourseId, onSaveComplete }) {
           break
         }
       }
-      
+
       if (headerRow) {
         dataStartRow = headerRowIndex + 1  // 資料從標題的下一行開始
-        
+
         // 檢查是否有「開課系所」欄位
         if (headerRow.some(cell => String(cell).includes('開課系所'))) {
           hasOpeningDeptColumn = true
@@ -403,9 +405,9 @@ export default function CreateCourse({ editingCourseId, onSaveComplete }) {
         dataStartRow = 0
         console.log('未偵測到標題行，假設第 1 列開始就是資料')
       }
-      
+
       const dataRows = rawData.slice(dataStartRow)
-      
+
       console.log(`資料從第 ${dataStartRow + 1} 列開始，共 ${dataRows.length} 筆`)
       console.log(`是否有開課系所欄位: ${hasOpeningDeptColumn}`)
 
@@ -419,16 +421,16 @@ export default function CreateCourse({ editingCourseId, onSaveComplete }) {
       // 逐筆處理課程資料
       for (let i = 0; i < dataRows.length; i++) {
         const row = dataRows[i]
-        
+
         if (!row || row.length === 0 || !row[0]) {
           continue
         }
-        
+
         try {
           let semester, courseCode, courseName, teacherText, maxStudents
           let credits, hoursPerWeek, courseCategoryName, classroom
           let weekdayText, periodText, description, gradeLevel, openingDept
-          
+
           if (dataStartRow === 5 && hasOpeningDeptColumn) {
             // 16 欄格式
             semester = String(row[0] || '').trim()
@@ -476,7 +478,7 @@ export default function CreateCourse({ editingCourseId, onSaveComplete }) {
             periodText = String(row[13] || '').trim()
             description = String(row[14] || '').trim()
           }
-          
+
           const academicYear = semester.substring(0, 3)
           const semesterNum = semester.substring(3, 4)
 
@@ -486,13 +488,13 @@ export default function CreateCourse({ editingCourseId, onSaveComplete }) {
             results.failed++
             continue
           }
-          
+
           if (!courseName) {
             results.errors.push(`第 ${i + 2} 列：缺少課程名稱`)
             results.failed++
             continue
           }
-          
+
           if (!teacherText) {
             results.errors.push(`第 ${i + 2} 列：缺少教師姓名`)
             results.failed++
@@ -512,7 +514,7 @@ export default function CreateCourse({ editingCourseId, onSaveComplete }) {
           // 找到所有教師（如果不存在則創建）
           const foundTeachers = []
           const createdTeachers = [] // 記錄新創建的教師
-          
+
           for (const name of teacherNames) {
             let teacher = teachers.find(t => t.real_name === name)
             if (teacher) {
@@ -530,7 +532,7 @@ export default function CreateCourse({ editingCourseId, onSaveComplete }) {
                 }
                 foundTeachers.push(newTeacher)
                 createdTeachers.push(name)
-                
+
                 // 也加入 teachers 列表，避免同一個 Excel 中重複創建
                 teachers.push(newTeacher)
               } catch (err) {
@@ -553,11 +555,11 @@ export default function CreateCourse({ editingCourseId, onSaveComplete }) {
 
           // 第一位教師為主開課，其餘為協同
           const mainTeacher = foundTeachers[0]
-          
+
           // 分離協同教師：現有的和新建的
           const coTeacherIds = []
           const coTeacherNames = []
-          
+
           for (const teacher of foundTeachers.slice(1)) {
             if (teacher.is_new) {
               coTeacherNames.push(teacher.real_name)
@@ -575,7 +577,7 @@ export default function CreateCourse({ editingCourseId, onSaveComplete }) {
 
           // 決定課程系所
           let department = importDepartment
-          
+
           if (openingDept) {
             department = openingDept
             console.log(`使用 Excel 中的系所: ${department}`)
@@ -624,11 +626,11 @@ export default function CreateCourse({ editingCourseId, onSaveComplete }) {
       }
 
       setImportResults(results)
-      
+
       if (results.success > 0) {
-        alert(`匯入完成！\n成功：${results.success} 筆\n失敗：${results.failed} 筆${results.failed > 0 ? '\n\n請查看下方錯誤訊息' : ''}`)
+        toast.success(`匯入完成！成功：${results.success} 筆，失敗：${results.failed} 筆`)
       } else {
-        alert(`匯入失敗：所有 ${results.failed} 筆資料都未能成功匯入\n\n請查看下方錯誤訊息`)
+        toast.error(`匯入失敗：所有 ${results.failed} 筆資料都未能成功匯入`)
       }
 
       if (results.success > 0) {
@@ -637,7 +639,7 @@ export default function CreateCourse({ editingCourseId, onSaveComplete }) {
 
     } catch (error) {
       console.error('檔案處理錯誤:', error)
-      alert('檔案處理失敗，請確認檔案格式是否正確\n\n錯誤訊息：' + error.message)
+      toast.error('檔案處理失敗，請確認檔案格式是否正確: ' + error.message)
     } finally {
       setImportLoading(false)
       e.target.value = ''
@@ -679,52 +681,72 @@ export default function CreateCourse({ editingCourseId, onSaveComplete }) {
             </svg>
             批次匯入課程（Excel）
           </h3>
-          
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              選擇預設開課系所（當 Excel 無系所欄位時使用）
-            </label>
-            <select
-              value={importDepartment}
-              onChange={(e) => setImportDepartment(e.target.value)}
-              className="w-64 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-            >
-              {departmentOptions.map(dept => (
-                <option key={dept.value} value={dept.value}>
-                  {dept.label}
-                </option>
-              ))}
-            </select>
+
+          {/* Drag and Drop Zone */}
+          <div
+            className={`mb-4 p-8 border-2 border-dashed rounded-xl transition-all text-center cursor-pointer
+              ${importLoading ? 'bg-gray-100 border-gray-300 cursor-not-allowed' : 'hover:bg-green-50 hover:border-green-400'}
+              ${'border-green-300 bg-green-50/50'}
+            `}
+            onDragOver={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              e.currentTarget.classList.add('border-green-500', 'bg-green-100')
+            }}
+            onDragLeave={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              e.currentTarget.classList.remove('border-green-500', 'bg-green-100')
+            }}
+            onDrop={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              e.currentTarget.classList.remove('border-green-500', 'bg-green-100')
+
+              if (importLoading) return
+
+              const files = e.dataTransfer.files
+              if (files && files.length > 0) {
+                const file = files[0] // Only take the first file
+                // Manually trigger handleFileImport with a mock event
+                handleFileImport({ target: { files: [file] } })
+              }
+            }}
+            onClick={() => !importLoading && document.getElementById('excel-upload-input').click()}
+          >
+            <div className="flex flex-col items-center justify-center space-y-3">
+              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
+                <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+              </div>
+
+              <div className="text-gray-700">
+                <span className="font-bold text-lg">拖曳 Excel 檔案至此</span>
+                <span className="mx-2 text-gray-400">|</span>
+                <span className="text-green-600 hover:text-green-700 font-medium">點擊選擇檔案</span>
+              </div>
+
+              <p className="text-sm text-gray-500">
+                支援 .xlsx, .xls 格式
+              </p>
+            </div>
+
+            <input
+              id="excel-upload-input"
+              type="file"
+              accept=".xlsx,.xls"
+              onChange={handleFileImport}
+              disabled={importLoading}
+              className="hidden"
+            />
           </div>
 
-          {/* <div className="mb-4 p-4 bg-yellow-50 border-l-4 border-yellow-400 rounded">
-            <h4 className="font-bold text-yellow-800 mb-2">📝 教師欄位格式說明：</h4>
-            <ul className="text-sm text-yellow-700 space-y-1">
-              <li>• 單一教師：直接填寫教師姓名（例如：老師一）</li>
-              <li>• 多位教師：使用<strong>頓號「、」</strong>分隔（例如：老師一、老師二）</li>
-              <li>• <strong className="text-red-600">第一位教師</strong>為<strong className="text-blue-600">主開課</strong>，其餘為<strong className="text-purple-600">協同</strong></li>
-              <li>• 範例：「張三、李四、王五」→ 張三為主開課，李四和王五為協同教師</li>
-            </ul>
-          </div> */}
-
-          <div>
-            <label className="cursor-pointer inline-flex items-center px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg transition-colors">
-              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-              </svg>
-              {importLoading ? '匯入中...' : '選擇 Excel 檔案'}
-              <input
-                type="file"
-                accept=".xlsx,.xls"
-                onChange={handleFileImport}
-                disabled={importLoading}
-                className="hidden"
-              />
-            </label>
-            <p className="mt-2 text-sm text-gray-600">
-              支援 .xlsx 和 .xls 格式
-            </p>
-          </div>
+          {importLoading && (
+            <div className="text-center text-green-600 font-medium mb-4 animate-pulse">
+              正在處理檔案中，請稍候...
+            </div>
+          )}
 
           {importResults && (
             <div className="mt-6">
@@ -734,7 +756,7 @@ export default function CreateCourse({ editingCourseId, onSaveComplete }) {
                 <p className="text-green-700">成功：{importResults.success} 筆</p>
                 <p className="text-red-700">失敗：{importResults.failed} 筆</p>
               </div>
-              
+
               {importResults.errors.length > 0 && (
                 <div className="mt-4 p-4 bg-red-50 border-2 border-red-200 rounded-lg">
                   <h4 className="font-bold text-red-800 mb-2">錯誤訊息：</h4>
@@ -754,7 +776,7 @@ export default function CreateCourse({ editingCourseId, onSaveComplete }) {
           {/* 課程基本資訊 */}
           <div className="space-y-4 mb-6 bg-blue-50 p-4 rounded-lg">
             <h3 className="text-lg font-bold text-gray-700 border-b pb-2">課程基本資訊</h3>
-            
+
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -853,7 +875,7 @@ export default function CreateCourse({ editingCourseId, onSaveComplete }) {
           {/* 開課資訊 */}
           <div className="space-y-4 mb-6 bg-yellow-50 p-4 rounded-lg">
             <h3 className="text-lg font-bold text-gray-700 border-b pb-2">開課資訊</h3>
-            
+
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -954,7 +976,7 @@ export default function CreateCourse({ editingCourseId, onSaveComplete }) {
                   )}
                 </button>
               </div>
-              
+
               {formData.use_new_teacher ? (
                 // 輸入新教師姓名
                 <div>
@@ -1040,7 +1062,7 @@ export default function CreateCourse({ editingCourseId, onSaveComplete }) {
           {/* 上課時間與地點 */}
           <div className="space-y-4 mb-6 bg-green-50 p-4 rounded-lg">
             <h3 className="text-lg font-bold text-gray-700 border-b pb-2">上課時間與地點</h3>
-            
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 教室 <span className="text-red-500">*</span>
@@ -1115,7 +1137,7 @@ export default function CreateCourse({ editingCourseId, onSaveComplete }) {
           {/* 選課人數 */}
           <div className="space-y-4 mb-6 bg-purple-50 p-4 rounded-lg">
             <h3 className="text-lg font-bold text-gray-700 border-b pb-2">選課人數</h3>
-            
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 人數上限 <span className="text-red-500">*</span>
