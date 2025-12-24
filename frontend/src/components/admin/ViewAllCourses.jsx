@@ -18,7 +18,7 @@ export default function ViewAllCourses({ onEdit }) {
     { value: 'all', label: '所有系所' },
     { value: '資管系', label: '資訊管理系' },
     { value: '護理系', label: '護理系' },
-    { value: '健康事業管理系', label: '健康事業管理系' }
+    { value: '健管系', label: '健康事業管理系' }
   ]
 
   const gradeOptions = [
