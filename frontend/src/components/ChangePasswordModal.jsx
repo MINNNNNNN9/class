@@ -63,10 +63,12 @@ export default function ChangePasswordModal({ isOpen, onClose, isMandatory = fal
             
             if (!csrfToken) {
                 toast.error('無法獲取 CSRF token，請重新登入')
+                setLoading(false)
                 return
             }
 
             console.log('發送修改密碼請求...')
+            console.log('使用 CSRF token:', csrfToken.substring(0, 20) + '...')
             
             await axios.post(API_ENDPOINTS.changePassword, {
                 old_password: oldPassword,
@@ -74,7 +76,8 @@ export default function ChangePasswordModal({ isOpen, onClose, isMandatory = fal
             }, {
                 withCredentials: true,
                 headers: {
-                    'X-CSRFToken': csrfToken
+                    'X-CSRFToken': csrfToken,
+                    'Content-Type': 'application/json'
                 }
             })
 
@@ -87,7 +90,12 @@ export default function ChangePasswordModal({ isOpen, onClose, isMandatory = fal
         } catch (error) {
             console.error('修改密碼失敗:', error)
             console.error('錯誤詳情:', error.response?.data)
-            toast.error(error.response?.data?.error || error.response?.data?.detail || '修改密碼失敗')
+            
+            const errorMsg = error.response?.data?.error 
+                || error.response?.data?.detail 
+                || '修改密碼失敗'
+            
+            toast.error(errorMsg)
         } finally {
             setLoading(false)
         }

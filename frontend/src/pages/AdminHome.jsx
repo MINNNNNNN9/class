@@ -17,14 +17,14 @@ export default function AdminHome() {
 
   const handleLogout = async () => {
     try {
-      // 從 cookie 取得 CSRF token
+      // 從 localStorage 或 cookie 取得 CSRF token
       const getCookie = (name) => {
         const value = `; ${document.cookie}`
         const parts = value.split(`; ${name}=`)
         if (parts.length === 2) return parts.pop().split(';').shift()
       }
       
-      const csrfToken = getCookie('csrftoken')
+      const csrfToken = localStorage.getItem('csrftoken') || getCookie('csrftoken')
       
       await axios.post(API_ENDPOINTS.logout, {}, {
         withCredentials: true,
@@ -37,9 +37,8 @@ export default function AdminHome() {
       // 即使 API 失敗也繼續登出流程
     }
     
-    localStorage.removeItem('username')
-    localStorage.removeItem('token')
-    localStorage.removeItem('realName')
+    // 清除所有 localStorage
+    localStorage.clear()
     
     navigate('/')
   }

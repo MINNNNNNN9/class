@@ -30,11 +30,15 @@ export default function LoginPage() {
     try {
       console.log('開始登入流程...')
       
-      // ✅ 關鍵修復：登入前先清除所有舊的認證資訊
-      localStorage.removeItem('csrftoken')
-      localStorage.removeItem('username')
-      localStorage.removeItem('realName')
-      console.log('已清除舊的 localStorage 資料')
+      // ✅ 登入前先清除所有舊的認證資訊
+      localStorage.clear()
+      
+      // 清除所有 cookies
+      document.cookie.split(";").forEach(function(c) { 
+        document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+      });
+      
+      console.log('已清除舊的認證資料')
       
       // ✅ 登入請求不需要 CSRF token（後端已設置 @csrf_exempt）
       const res = await axios.post(API_ENDPOINTS.login, {
@@ -54,7 +58,7 @@ export default function LoginPage() {
 
       // ✅ 儲存後端回傳的 CSRF Token（使用小寫 csrftoken）
       if (res.data.csrfToken) {
-        setStoredCsrfToken(res.data.csrfToken)  // 這會儲存到 localStorage['csrftoken']
+        setStoredCsrfToken(res.data.csrfToken)
         console.log('✅ CSRF token 已儲存到 localStorage')
       } else {
         console.warn('⚠️ 後端沒有回傳 csrfToken')
@@ -89,17 +93,15 @@ export default function LoginPage() {
           setRoles(res.data.roles)
         }
       } else {
-        toast.error('無法識別用戶身份，請聯繫管理員')
+        toast.error('無法識別用戶身份,請聯繫管理員')
         console.error('Login response missing role info:', res.data)
       }
     } catch (err) {
       console.error('登入錯誤:', err)
       console.error('錯誤詳情:', err.response?.data)
       
-      // ✅ 關鍵修復：登入失敗時也清除 localStorage
-      localStorage.removeItem('csrftoken')
-      localStorage.removeItem('username')
-      localStorage.removeItem('realName')
+      // ✅ 登入失敗時也清除 localStorage
+      localStorage.clear()
       
       const errorMessage = err.response?.data?.error 
         || err.response?.data?.detail 

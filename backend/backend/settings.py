@@ -98,14 +98,12 @@ else:
     SESSION_COOKIE_SECURE = False
     SESSION_COOKIE_DOMAIN = None
 
-SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_HTTPONLY = False  # 改為 False 讓前端可以檢查
 SESSION_COOKIE_AGE = 86400  # 24小時
 SESSION_COOKIE_NAME = 'sessionid'
-
-# ✅ 新增：Session 優化設定
-SESSION_SAVE_EVERY_REQUEST = False  # 不要每次請求都保存 session，提升性能
-SESSION_EXPIRE_AT_BROWSER_CLOSE = False  # 關閉瀏覽器不清除 session
-SESSION_ENGINE = 'django.contrib.sessions.backends.db'  # 使用資料庫儲存 session
+SESSION_SAVE_EVERY_REQUEST = True  # 改為 True，確保 session 持續有效
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False
+SESSION_ENGINE = 'django.contrib.sessions.backends.db'
 
 # ===== CSRF 設定（根據環境自動調整）=====
 default_csrf_origins = [
@@ -131,9 +129,10 @@ else:
 CSRF_COOKIE_HTTPONLY = False
 CSRF_USE_SESSIONS = False
 CSRF_COOKIE_NAME = 'csrftoken'
-
-# ✅ 新增：CSRF Token 有效期設定（1年），避免頻繁過期
 CSRF_COOKIE_AGE = 31449600  # 365天
+
+# 新增：CSRF 失敗時不要靜默失敗
+CSRF_FAILURE_VIEW = 'django.views.csrf.csrf_failure'
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [

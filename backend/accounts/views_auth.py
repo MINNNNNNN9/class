@@ -2,6 +2,7 @@
 認證相關的 API views
 包含註冊、登入、登出功能
 """
+import os
 from django.contrib.auth import authenticate, login as django_login, logout as django_logout
 from django.contrib.auth.models import User
 from django.views.decorators.csrf import csrf_exempt
@@ -178,35 +179,45 @@ def logout_view(request):
     try:
         username = request.user.username if request.user.is_authenticated else '未知用戶'
         print(f"👋 用戶登出: {username}")
+        
+        # 執行登出
         django_logout(request)
         
+        # 清除 localStorage 中的 token
         response = Response({
             'message': '登出成功',
-            'status': 'success'
+            'status': 'success',
+            'clear_storage': True  # 告訴前端清除 localStorage
         })
         
+        # 刪除 sessionid cookie
         response.delete_cookie(
             'sessionid',
             path='/',
-            domain='.onrender.com',
-            samesite='None'
+            samesite='None' if os.environ.get('DATABASE_URL') else 'Lax',
+            domain=None
         )
         
+        # 刪除 csrftoken cookie
         response.delete_cookie(
             'csrftoken',
             path='/',
-            domain='.onrender.com',
-            samesite='None'
+            samesite='None' if os.environ.get('DATABASE_URL') else 'Lax',
+            domain=None
         )
         
+        # 設置快取控制
         response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
         response['Pragma'] = 'no-cache'
         response['Expires'] = '0'
         
+        print(f"✅ 登出成功，已清除 cookies")
         return response
         
     except Exception as e:
         print(f"❌ 登出錯誤: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return Response({
             'error': str(e),
             'status': 'error'
