@@ -4,7 +4,7 @@
 """
 from django.contrib.auth import authenticate, login as django_login, logout as django_logout
 from django.contrib.auth.models import User
-from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
+from django.views.decorators.csrf import csrf_exempt
 from django.middleware.csrf import get_token
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -20,17 +20,14 @@ def register(request):
     role_name = request.data.get('role')
     real_name = request.data.get('real_name')
     
-    # 學生專用欄位
     student_id = request.data.get('student_id')
     department = request.data.get('department')
     grade = request.data.get('grade', 3)
     
-    # 教師專用欄位
     teacher_id = request.data.get('teacher_id')
     office = request.data.get('office')
     title = request.data.get('title')
     
-    # 自動設定帳號 (username)
     if role_name == 'student':
         if not student_id:
             return Response({'error': '學生角色必須填寫學號'}, status=400)
@@ -43,7 +40,6 @@ def register(request):
     if not username or not password or not role_name:
         return Response({'error': '缺少必要欄位'}, status=400)
 
-    # 處理數值欄位，避免空字串導致錯誤
     if grade == '': grade = None
     
     if User.objects.filter(username=username).exists():
@@ -63,10 +59,8 @@ def register(request):
             title=title
         )
         
-        # 確保角色存在
         role, _ = Role.objects.get_or_create(name=role_name)
         profile.roles.add(role)
-             
         profile.save()
 
         return Response({'message': '註冊成功'})
@@ -84,47 +78,43 @@ def login_view(request):
     username = request.data.get('username')
     password = request.data.get('password')
 
-    # ✅ 關鍵修復：登入前先清除舊的 session
+    print(f"\n{'='*60}")
+    print(f"🔐 登入請求 - 用戶名: {username}")
+    
+    # 清除舊 session
     if request.user.is_authenticated:
-        print(f"檢測到舊 session，清除中...")
+        print(f"⚠️ 檢測到舊 session (用戶: {request.user.username})，清除中...")
         django_logout(request)
 
-    # 驗證帳號密碼
     user = authenticate(username=username, password=password)
     if user is None:
+        print(f"❌ 認證失敗: 帳號或密碼錯誤")
         return Response({'error': '帳號或密碼錯誤'}, status=401)
 
-    # 建立新的 session
     django_login(request, user)
-    print(f"用戶 {username} 登入成功，創建新 session")
+    print(f"✅ 用戶 {username} 登入成功")
 
     try:
         try:
             profile = Profile.objects.get(user=user)
         except Profile.DoesNotExist:
-            # 找不到 Profile，自動建立 (適用於 Superuser 或資料異常的帳號)
-            print(f"User {username} has no profile. Auto-creating...")
+            print(f"⚠️ User {username} has no profile. Auto-creating...")
             profile = Profile.objects.create(
                 user=user, 
                 real_name=user.username,
                 grade=None
             )
             
-            # 分配預設角色
             if user.is_superuser:
                 role_name = 'admin'
-                verbose = '管理員'
             elif user.is_staff:
                 role_name = 'teacher' 
-                verbose = '教師'
             else:
                 role_name = 'student'
-                verbose = '學生'
                 
             role, _ = Role.objects.get_or_create(name=role_name)
             profile.roles.add(role)
 
-        # 確保超級管理員有 admin 角色
         if user.is_superuser:
             admin_role, _ = Role.objects.get_or_create(name='admin')
             if not profile.roles.filter(name='admin').exists():
@@ -132,11 +122,10 @@ def login_view(request):
 
         roles = [r.name for r in profile.roles.all()]
         
-        # ✅ 取得全新的 CSRF token 並回傳
+        # 生成 CSRF token
         csrf_token = get_token(request)
-        print(f"生成新的 CSRF token: {csrf_token[:20]}...")
+        print(f"🔑 生成 CSRF token: {csrf_token[:30]}...")
         
-        # 管理員免除強制修改
         should_force = profile.force_password_change
         if user.is_superuser or 'admin' in roles:
             should_force = False
@@ -144,11 +133,10 @@ def login_view(request):
         response_data = {
             'username': username,
             'real_name': profile.real_name,
-            'csrfToken': csrf_token,  # 回傳給前端儲存在 localStorage
+            'csrfToken': csrf_token,
             'force_password_change': should_force,
         }
         
-        # 決定導向頁面
         if 'student' in roles:
             response_data['role'] = 'student'
         elif 'teacher' in roles:
@@ -158,18 +146,13 @@ def login_view(request):
         else:
             response_data['roles'] = roles
         
-        # ✅ 創建 Response
-        response = Response(response_data)
+        print(f"📤 返回數據: username={username}, csrfToken={csrf_token[:30]}..., role={response_data.get('role', 'N/A')}")
+        print(f"{'='*60}\n")
         
-        # ✅ 確保 CORS 允許 credentials
-        response['Access-Control-Allow-Credentials'] = 'true'
+        return Response(response_data)
         
-        return response
-        
-    except Profile.DoesNotExist:
-        return Response({'error': '找不到使用者資料'}, status=404)
     except Exception as e:
-        print(f"登入錯誤: {str(e)}")
+        print(f"❌ 登入錯誤: {str(e)}")
         import traceback
         traceback.print_exc()
         return Response({'error': f"系統錯誤: {str(e)}"}, status=500)
@@ -180,7 +163,8 @@ def login_view(request):
 def logout_view(request):
     """使用者登出"""
     try:
-        print(f"用戶登出: {request.user.username if request.user.is_authenticated else '未知'}")
+        username = request.user.username if request.user.is_authenticated else '未知用戶'
+        print(f"👋 用戶登出: {username}")
         django_logout(request)
         
         response = Response({
@@ -188,7 +172,6 @@ def logout_view(request):
             'status': 'success'
         })
         
-        # 清除 cookies
         response.delete_cookie(
             'sessionid',
             path='/',
@@ -203,7 +186,6 @@ def logout_view(request):
             samesite='None'
         )
         
-        # 防止快取
         response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
         response['Pragma'] = 'no-cache'
         response['Expires'] = '0'
@@ -211,7 +193,7 @@ def logout_view(request):
         return response
         
     except Exception as e:
-        print(f"登出錯誤: {str(e)}")
+        print(f"❌ 登出錯誤: {str(e)}")
         return Response({
             'error': str(e),
             'status': 'error'
@@ -230,23 +212,19 @@ def change_password(request):
     if not old_password or not new_password:
         return Response({'error': '請輸入舊密碼和新密碼'}, status=400)
         
-    # 驗證舊密碼
     if not request.user.check_password(old_password):
         return Response({'error': '舊密碼錯誤'}, status=400)
         
-    # 設定新密碼
     request.user.set_password(new_password)
     request.user.save()
     
-    # 更新強制修改密碼狀態
     if hasattr(request.user, 'profile'):
         request.user.profile.force_password_change = False
         request.user.profile.save()
     
-    # 修改密碼後更新 session auth hash 以保持登入狀態
     from django.contrib.auth import update_session_auth_hash
     update_session_auth_hash(request, request.user)
     
-    print(f"用戶 {request.user.username} 密碼修改成功")
+    print(f"✅ 用戶 {request.user.username} 密碼修改成功")
     
     return Response({'message': '密碼修改成功'})
